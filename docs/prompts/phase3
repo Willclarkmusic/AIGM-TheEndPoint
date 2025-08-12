@@ -1,0 +1,99 @@
+Phase 3: Collaborative Generative AI
+Prompt 1: Gen AI Backend & Queueing System
+Prompt to give Claude Code:
+
+You are an expert full-stack developer continuing to build a messaging platform. Your task is to implement the backend for collaborative generative AI, including a robust queuing and credit system.
+
+Please read the following documents to understand the project's requirements:
+- @/CLAUDE.md
+- @/ARCHITECTURE.md
+- @/UIUX.md
+
+### Task: Build Gen AI Backend & Queueing System
+
+1.  **Google Cloud Pub/Sub:** Set up a Google Cloud Pub/Sub topic and a subscription.
+2.  **Cloud Run Backend Service:**
+    * Modify the existing Cloud Run service from Phase 2.
+    * The service should subscribe to the Pub/Sub topic and process messages (requests for image, music, or video generation).
+3.  **Universal Credit System:**
+    * Implement a credit system that decrements a user's credit balance in Firestore based on the type of generation request.
+    * The initial pricing is: 2 credits for music (up to 3 minutes), 1 credit for an image.
+    * Implement logic to check if a user has enough credits before processing a request.
+4.  **Stability AI Integration:**
+    * Implement the API calls to the Stability AI APIs for both image and music generation.
+    * Ensure the service handles the asynchronous nature of these API calls, sending a "processing" status and then updating the chat with the final output.
+5.  **Final Output:** Provide the complete and updated code for the Cloud Run service, including a Dockerfile, the Python application, and any necessary Cloud Function triggers to publish messages to the Pub/Sub topic.
+
+Expected Outcome:
+The backend for all generative AI features will be complete. All requests will be queued via Pub/Sub, ensuring no API limits are hit. The credit system will be functional, and the service will generate images and music using the Stability AI APIs.
+
+How to Test:
+
+Manually publish a message to the Pub/Sub topic with a user ID and a generation prompt.
+
+Verify that the Cloud Run service processes the message, checks the user's credits, and calls the Stability AI API.
+
+Check the user's Firestore document to ensure their credit balance has been correctly decremented.
+
+Prompt 2: Gen AI Rooms & Credits
+Prompt to give Claude Code:
+
+You are an expert full-stack developer continuing to build a messaging platform. Your task is to implement the front-end for Gen AI rooms and display the user's credit balance.
+
+Please read the following documents to understand the project's requirements:
+- @/CLAUDE.md
+- @/ARCHITECTURE.md
+- @/UIUX.md
+
+### Task: Build Gen AI Rooms & Credits
+
+1.  **Room Type Creation:** In the server settings modal for owners, add an option to create different room types: a regular `chat` room, a `genai-radio` room, or an `ai-agent-design` room. Each type should have a unique icon.
+2.  **Room Limits:** Implement the server limits for room types (max 3 Gen AI and 3 AI agent rooms per server).
+3.  **Gen AI Room UI:** When a `genai-radio` room is selected, the `ActionWindow` should display a dedicated UI for submitting generation prompts. This UI should have options for generating images and music.
+4.  **Credit Display:** In a prominent location (e.g., the user profile pop-up), display the user's current credit balance.
+5.  **Generation Trigger:** When a user submits a prompt, a Firebase Cloud Function should be triggered to publish the request to the Google Cloud Pub/Sub topic.
+6.  **Final Output:** Provide the complete and updated React components, along with any necessary Cloud Functions to trigger the Pub/Sub message. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+
+Expected Outcome:
+Server owners can now create different room types, and the genai-radio rooms will have a dedicated UI for submitting prompts. The user's credit balance will be displayed on the front-end.
+
+How to Test:
+
+As a server owner, create a new genai-radio room. Verify it has the correct icon and that you can't create more than three.
+
+In the genai-radio room, verify that the dedicated UI for image and music generation is present.
+
+Check your user profile pop-up to verify that your credit balance is displayed correctly.
+
+Prompt 3: Gen AI Radio Feature
+Prompt to give Claude Code:
+
+You are an expert full-stack developer completing the final features for the MVP. Your task is to build the "Radio" feature, including generating album art and sharing a playlist to the social feed.
+
+Please read the following documents to understand the project's requirements:
+- @/CLAUDE.md
+- @/ARCHITECTURE.md
+- @/UIUX.md
+
+### Task: Build the Gen AI Radio Feature
+
+1.  **Album Art Generation/Upload:** In the `genai-radio` room UI, after a song is generated, provide an option for the user to either manually upload an album art image (up to 2MB) or generate one using 1 credit.
+2.  **Room Playlist:** Implement the logic to add generated songs to a playlist in the Firestore document of the `genai-radio` room.
+3.  **Social Feed Integration:** Add a button to the `genai-radio` room that allows the user to share the playlist to the social feed.
+4.  **Social Post UI:** The shared post in the social feed should have a dedicated UI. It should display the album art, the song title, and basic playback controls (play, next, prev).
+5.  **Final Output:** Provide the complete and updated React components and Firebase logic to handle the album art, playlist, and social feed post creation. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+
+Expected Outcome:
+The MVP will be complete. Users can now generate music, add album art, and share it to the social feed as a "radio station" with playback controls. This final feature brings together all of the core concepts of the app.
+
+How to Test:
+
+In a genai-radio room, generate a song.
+
+After the song is generated, use the UI to either upload or generate album art.
+
+Verify the song and album art are added to the room's playlist.
+
+Share the playlist to the social feed.
+
+Navigate to the social feed and verify that the shared post displays the album art and has functional playback controls.

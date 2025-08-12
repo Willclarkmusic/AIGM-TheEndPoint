@@ -1,0 +1,142 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to validate image file
+    function isValidImage() {
+      return request.resource.size <= 2 * 1024 * 1024 && // 2MB limit
+             request.resource.contentType.matches('image/.*');
+    }
+    
+    // Helper function to validate profile picture
+    function isValidProfilePicture() {
+      return isValidImage() && 
+             request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+    }
+    
+    // Helper function to get user data from Firestore
+    function getUserData() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    // Helper function to check if user is a member of a server
+    function isMemberOfServer(serverId) {
+      return firestore.exists(/databases/(default)/documents/servers/$(serverId)/members/$(request.auth.uid));
+    }
+
+    // USER PROFILE PICTURES
+    // Users can only upload/manage their own profile pictures
+    match /users/{userId}/profile/{fileName} {
+      allow read: if true; // Profile pictures are publicly readable
+      allow write: if isAuthenticated() && 
+                   request.auth.uid == userId && 
+                   isValidProfilePicture();
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // USER UPLOADS (Private folder for each user)
+    // Users can only upload to their own folder
+    match /users/{userId}/uploads/{fileName} {
+      allow read, write: if isAuthenticated() && 
+                         request.auth.uid == userId && 
+                         isValidImage();
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // SERVER UPLOADS
+    // Server members can upload images for their servers
+    // Only images up to 2MB are allowed
+    match /servers/{serverId}/uploads/{fileName} {
+      allow read: if isMemberOfServer(serverId);
+      allow write: if isAuthenticated() && 
+                   isMemberOfServer(serverId) && 
+                   isValidImage();
+      allow delete: if isAuthenticated() && 
+                   isMemberOfServer(serverId);
+    }
+
+    // SOCIAL FEED IMAGES
+    // Users can upload images for social feed posts
+    match /social_feed/{postId}/{fileName} {
+      allow read: if true; // Social feed images are public
+      allow write: if isAuthenticated() && 
+                   isValidImage() &&
+                   firestore.get(/databases/(default)/documents/social_feed/$(postId)).data.author == request.auth.uid;
+      allow delete: if isAuthenticated() &&
+                   firestore.get(/databases/(default)/documents/social_feed/$(postId)).data.author == request.auth.uid;
+    }
+
+    // GENERATED AI CONTENT (Public, read-only)
+    // Generated images, videos, and music from AI services
+    match /ai_generated/{contentType}/{fileName} {
+      allow read: if true; // AI generated content is publicly readable
+      allow write: if false; // Only Cloud Functions can write AI generated content
+      allow delete: if false; // Only Cloud Functions can manage AI content
+    }
+
+    // CHAT MESSAGE ATTACHMENTS
+    // Users can upload attachments to chat rooms they have access to
+    match /chat_attachments/{serverId}/{roomId}/{messageId}/{fileName} {
+      allow read: if isAuthenticated() && isMemberOfServer(serverId);
+      allow write: if isAuthenticated() && 
+                   isMemberOfServer(serverId) && 
+                   isValidImage();
+      allow delete: if isAuthenticated() && 
+                   (isMemberOfServer(serverId) || 
+                    firestore.get(/databases/(default)/documents/servers/$(serverId)/chat_rooms/$(roomId)/messages/$(messageId)).data.senderId == request.auth.uid);
+    }
+
+    // PRIVATE MESSAGE ATTACHMENTS
+    // Users can upload attachments to private messages they participate in
+    match /private_attachments/{pmId}/{messageId}/{fileName} {
+      allow read: if isAuthenticated() && 
+                 request.auth.uid in firestore.get(/databases/(default)/documents/private_messages/$(pmId)).data.participants;
+      allow write: if isAuthenticated() && 
+                  request.auth.uid in firestore.get(/databases/(default)/documents/private_messages/$(pmId)).data.participants && 
+                  isValidImage();
+      allow delete: if isAuthenticated() && 
+                   (request.auth.uid in firestore.get(/databases/(default)/documents/private_messages/$(pmId)).data.participants ||
+                    firestore.get(/databases/(default)/documents/private_messages/$(pmId)/messages/$(messageId)).data.senderId == request.auth.uid);
+    }
+
+    // TEMPORARY UPLOADS
+    // Short-term storage for file processing (automatically cleaned up)
+    match /temp/{userId}/{fileName} {
+      allow read, write: if isAuthenticated() && 
+                         request.auth.uid == userId && 
+                         isValidImage();
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // SYSTEM FILES (Cloud Functions only)
+    // System assets and configuration files
+    match /system/{document=**} {
+      allow read: if true; // System assets can be publicly readable
+      allow write, delete: if false; // Only Cloud Functions can manage system files
+    }
+
+    // THUMBNAILS (Auto-generated)
+    // Thumbnails generated by Cloud Functions
+    match /thumbnails/{path=**} {
+      allow read: if true; // Thumbnails are publicly readable
+      allow write, delete: if false; // Only Cloud Functions can manage thumbnails
+    }
+
+    // BACKUP DATA (Admin only)
+    // Backup files and exports
+    match /backups/{document=**} {
+      allow read, write, delete: if false; // Only admin users and Cloud Functions
+    }
+
+    // Default deny rule for any unmatched paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

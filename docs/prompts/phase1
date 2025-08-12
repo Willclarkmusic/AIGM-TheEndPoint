@@ -1,0 +1,191 @@
+Phase 1: The Core Messaging Platform
+The prompts in this phase focus on establishing the foundational, user-facing parts of the application.
+
+Prompt 1: User Authentication & Profile
+Prompt to give Claude Code:
+
+You are an expert full-stack developer with extensive experience in React, Tailwind CSS, and Firebase. Your task is to build a user authentication system for a messaging and social platform. Your goal is to create the login, signup, and profile creation flow based on the project documents.
+
+Please read the following documents to understand the project's requirements:
+- @/CLAUDE.md
+- @/ARCHITECTURE.md
+- @/UIUX.md
+
+### Task: Build the Authentication System
+
+1.  **Setup & Dependencies:** Initialize a new React project using Vite. Install all necessary dependencies for Firebase (Authentication, Firestore), React, and Tailwind CSS. Ensure a `.env.local` file is created for local Firebase configuration.
+2.  **Login Component:** Create a `LoginPage.jsx` component. It should have fields for email and password, a link to the signup page, and buttons for Google and GitHub social logins. The UI must strictly follow the neo-brutalism style described in `@/UIUX.md`.
+3.  **Signup Component:** Create a `SignupPage.jsx` component with fields for email, username, password, and confirm password. It should also have buttons for Google and GitHub social logins.
+4.  **Firebase Integration:**
+    * Implement Firebase Authentication for email/password, Google, and GitHub providers.
+    * Upon successful user creation, automatically create a new document in the `users` Firestore collection with the user's `uid`, `name`, `email`, and an initial `credits` value of 10.
+5.  **Routing:** Implement basic React Router to switch between the login and signup pages.
+6.  **Final Output:** Provide a single, complete file with all the code for the project, including the Firebase initialization, components, and styling. The code must be production-ready and fully commented.
+
+Expected Outcome:
+A complete, self-contained React application with two pages: a login form and a signup form. Both forms will be visually consistent with the neo-brutalism style and will have functional buttons for email/password and social logins. New users will be successfully created in Firebase Authentication and a corresponding user document will appear in the Firestore users collection.
+
+How to Test:
+
+Open the app in your browser. The login page should appear.
+
+Navigate to the signup page. Create a new user with an email and password.
+
+Check the Firebase Console. A new user should be listed under "Authentication," and a new document should be created in the "Firestore Database" under the users collection with the correct fields and initial credits value.
+
+Try logging in with the new user. It should navigate you to a blank home page.
+
+Test the Google and GitHub login buttons to ensure they work correctly and also create a user and Firestore document.
+
+Verify all buttons have the thick black drop shadow and bouncy-style feel.
+
+Prompt 2: Core UI Layout & Presence System
+Prompt to give Claude Code:
+
+You are an expert full-stack developer continuing to build a messaging platform. Your task is to create the core layout for the home screen and implement the hybrid real-time presence system.
+
+Please read the following documents to understand the project's requirements:
+- @/CLAUDE.md
+- @/ARCHITECTURE.md
+- @/UIUX.md
+
+### Task: Build the Core Layout and Presence System
+
+1.  **Home Screen Layout:** Create a `HomeScreen.jsx` component. It should render the entire three-column layout: the `ServerBar`, `InfoBar`, and `ActionWindow`. The layout should be responsive and styled with Tailwind CSS to match the neo-brutalism design. The `ServerBar` and `InfoBar` should be fixed sidebars, and the `ActionWindow` should take up the remaining space.
+2.  **User Status UI:** Implement the UI for displaying the user's status in the `ServerBar` as a colored dot on their profile icon. This status should be selectable via a pop-up menu that appears when the profile icon is clicked.
+3.  **Presence System Logic:**
+    * Implement a hybrid presence system:
+        * On the client side, use a Firestore listener to update a `lastSeen` timestamp in the current user's document in the `users` collection whenever the user is active (e.g., on a mouse move or keyboard event).
+        * The client should also update the `status` field to "Online" when active.
+    * Create a Firebase Cloud Function that is triggered on a schedule (e.g., every 5 minutes). This function should check all user documents in the `users` collection. If a user's `lastSeen` timestamp is older than 10 minutes, the function should update their `status` to "Idle" and then "Away" after an additional 10 minutes.
+4.  **Final Output:** Provide the complete and updated React components, along with the Firebase Cloud Function code. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+
+Expected Outcome:
+The home page will now display the complete three-column layout. The user's profile icon in the bottom-left corner will show a colored dot. When the user is active, the dot will be green. After a period of inactivity, the dot will turn yellow and then red, managed by the Cloud Function. The UI for selecting a custom status will also be present.
+
+How to Test:
+
+Log in to the app and verify the three-column layout is correct and follows the neo-brutalism style.
+
+Observe the colored dot on your profile icon. It should be green ("Online").
+
+Leave the app tab open but idle for 5-10 minutes. Check the Firestore document for your user; the status should change to "Idle."
+
+Leave the tab idle for another 10 minutes. The status should change to "Away."
+
+Click on the profile icon, select a different status, and verify that it updates in Firestore.
+
+Prompt 3: Server/Room Management & Roles
+Prompt to give Claude Code:
+
+You are an expert full-stack developer continuing to build a messaging platform. Your task is to implement the server and room management system, including the crucial server role and deletion logic.
+
+Please read the following documents to understand the project's requirements:
+- @/CLAUDE.md
+- @/ARCHITECTURE.md
+- @/UIUX.md
+
+### Task: Implement Server/Room Management & Roles
+
+1.  **Create Server Modal:** Build a modal that is triggered by the "+" button in the `ServerBar`. This modal should contain a form for creating a new server with a name and a button to join an existing server with a 5-digit code.
+2.  **Server Creation Logic:**
+    * When a user creates a new server, a new document should be created in the `servers` collection.
+    * Automatically create a subcollection `members` with the creator as the first member and a `role` of "owner."
+    * Automatically create a subcollection `chat_rooms` with a single document for the `#General` room.
+    * The server should have a `ownerIds` field as an array containing the creator's UID. The limit for owners should be set to 3 for the MVP.
+3.  **Server Settings Modal & Roles:**
+    * Create a server settings modal that is accessible via a button in the `InfoBar`.
+    * This modal should have a "Roles" tab that is only visible to users with an "owner" role.
+    * The "Roles" tab should contain a search bar that filters through all server members and allows the owner to change the role of any member.
+4.  **Server Deletion Logic (Cloud Function):**
+    * Create a Firebase Cloud Function that is triggered by the deletion of a document in the `servers` collection.
+    * This function **must** programmatically perform a cascading delete, removing all associated `members`, `chat_rooms`, and all `messages` subcollections. It should also remove the server's ID from all user profiles.
+5.  **Final Output:** Provide the complete and updated React components, along with the Firebase Cloud Function code and any necessary Firestore security rules to enforce the `owner`/`admin`/`member` roles. The code must be production-ready and fully commented.
+
+Expected Outcome:
+The "+" button will open a modal that allows users to create or join servers. Server owners can access a roles management tab in the settings modal. Most critically, the server deletion process will be handled safely and completely by a Cloud Function.
+
+How to Test:
+
+Click the "+" button and create a new server. Verify it appears in your ServerBar and that a new document and subcollections are created in Firestore.
+
+Have another user join the server using the invite code. Verify they are added to the members subcollection with a role of "member."
+
+As the owner, open the server settings, navigate to the "Roles" tab, and change the other user's role to "admin." Verify the change is reflected in Firestore.
+
+As the owner, delete the server. Verify that all server-related data is completely removed from the database.
+
+Prompt 4: Basic Chat & Message Deletion
+Prompt to give Claude Code:
+
+You are an expert full-stack developer continuing to build a messaging platform. Your task is to implement the core chat functionality and message deletion based on user roles.
+
+Please read the following documents to understand the project's requirements:
+- @/CLAUDE.md
+- @/ARCHITECTURE.md
+- @/UIUX.md
+
+### Task: Build the Basic Chat & Message Deletion
+
+1.  **Message Log & Real-time:** In the `ActionWindow`, create the `MessageLog` component. This component should display messages from a `messages` subcollection in a Firestore room, using a real-time listener to show new messages instantly.
+2.  **Message Composer:** Create a basic, text-only `MessageComposer` component with an input field and a send button.
+3.  **UI Logic:**
+    * Align messages from the current user to the right and all other messages to the left.
+    * Implement message grouping and timestamps as specified in the `UIUX.md` (new block of messages, or gap of >2 hours).
+    * Display a button to delete a message on hover.
+4.  **Message Deletion Logic:**
+    * Implement the logic for a user to delete their own messages.
+    * Implement a separate function that allows a user with an "owner" or "admin" role to delete any message in the server. This should be enforced by Firestore security rules.
+5.  **Final Output:** Provide the complete and updated React components, along with the necessary Firestore security rules. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+
+Expected Outcome:
+The Action Window will now function as a real-time chat room. Messages will be sent, received, and displayed with correct alignment and grouping. Users will be able to delete messages according to their roles.
+
+How to Test:
+
+Log in with two different users in the same room. Send messages from each account and verify they appear in real-time.
+
+Verify the message grouping and timestamp logic (send multiple messages in a row, then have the other user send one).
+
+As a member, try to delete another user's message. It should fail.
+
+As a member, delete your own message. It should succeed.
+
+Log in as an admin, and try to delete any message in the room. It should succeed.
+
+Prompt 5: Friends List & Direct Messaging
+Prompt to give Claude Code:
+
+You are an expert full-stack developer continuing to build a messaging platform. Your task is to implement the "Friends" tab, including user search, friend requests, and direct messaging functionality.
+
+Please read the following documents to understand the project's requirements:
+- @/CLAUDE.md
+- @/ARCHITECTURE.md
+- @/UIUX.md
+
+### Task: Build Friends List & Direct Messaging
+
+1.  **Friends Tab UI:** In the `InfoBar`, create the "Friends" tab UI. This should include a search bar, a button to "Add Friend," and a section for a list of friends.
+2.  **Add Friend Search:**
+    * When the "Add Friend" button is clicked, the `ActionWindow` should become a search interface.
+    * Implement a search functionality that queries the `users` Firestore collection for users matching the input (by username or email).
+    * Display the search results with a button to send a friend request.
+3.  **Friend Request Logic:** Implement a system for sending and accepting friend requests. A new collection, `friend_requests`, could be used for this.
+4.  **Direct Messaging Logic:**
+    * When a user clicks on a friend, a new or existing `private_messages` room should open in the `ActionWindow`.
+    * This room should support up to **20 participants** for the MVP.
+    * Use a Firestore subcollection for the messages within this room, similar to the regular chat rooms.
+5.  **Final Output:** Provide the complete and updated React components and Firebase logic. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+
+Expected Outcome:
+The "Friends" tab will be fully functional, allowing users to find and send friend requests to others. Once accepted, friends will appear in the list. Users can also engage in direct messages with friends.
+
+How to Test:
+
+Log in with one user, go to the "Friends" tab, click "Add Friend," and search for a second user.
+
+Send a friend request. Log in with the second user and verify they can accept the request.
+
+Verify that both users now appear in each other's friends lists.
+
+Start a DM with the new friend. Send messages and verify they are received in real-time.
