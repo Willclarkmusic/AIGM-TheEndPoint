@@ -1,19 +1,45 @@
 import React from "react";
 import type { User } from "firebase/auth";
-import { FiSidebar } from "react-icons/fi";
+import { FiSidebar, FiArrowLeft } from "react-icons/fi";
+import ServerSettings from "./ServerSettings";
+import ChatRoom from "./ChatRoom";
 
 interface ActionWindowProps {
   selectedServer: string | null;
   selectedTab: "friends" | "feed";
   user: User;
+  showServerSettings?: boolean;
+  selectedServerData?: {
+    id: string;
+    name: string;
+    role: "owner" | "admin" | "member" | null;
+  } | null;
+  selectedRoom?: {
+    id: string;
+    name: string;
+    serverId: string;
+  } | null;
+  onBackFromServerSettings?: () => void;
+  onServerDeleted?: () => void;
 }
 
 const ActionWindow: React.FC<ActionWindowProps> = ({
   selectedServer,
   selectedTab,
   user,
+  showServerSettings = false,
+  selectedServerData,
+  selectedRoom,
+  onBackFromServerSettings,
+  onServerDeleted,
 }) => {
   const getTitle = () => {
+    if (showServerSettings && selectedServerData) {
+      return "Server Settings";
+    }
+    if (selectedRoom) {
+      return selectedRoom.name;
+    }
     if (selectedServer) {
       return `Server ${selectedServer}`;
     }
@@ -21,6 +47,31 @@ const ActionWindow: React.FC<ActionWindowProps> = ({
   };
 
   const getContent = () => {
+    // Show ServerSettings when requested
+    if (showServerSettings && selectedServerData && selectedServerData.role) {
+      return (
+        <ServerSettings
+          serverId={selectedServerData.id}
+          serverName={selectedServerData.name}
+          user={user}
+          userRole={selectedServerData.role}
+          onServerDeleted={onServerDeleted}
+        />
+      );
+    }
+
+    // Show ChatRoom when a room is selected
+    if (selectedRoom) {
+      return (
+        <ChatRoom
+          serverId={selectedRoom.serverId}
+          roomId={selectedRoom.id}
+          roomName={selectedRoom.name}
+          user={user}
+        />
+      );
+    }
+
     if (selectedServer) {
       return (
         <div className="text-center">
@@ -92,14 +143,24 @@ const ActionWindow: React.FC<ActionWindowProps> = ({
     <div className="flex-1 bg-white dark:bg-gray-900 flex flex-col">
       {/* Top Bar */}
       <div className="bg-gray-800 dark:bg-gray-950 text-white px-6 py-4 border-b-4 border-black dark:border-gray-600 flex items-center justify-between">
-        <h1 className="text-xl font-black uppercase">{getTitle()}</h1>
+        <div className="flex items-center gap-4">
+          {showServerSettings && onBackFromServerSettings && (
+            <button 
+              onClick={onBackFromServerSettings}
+              className="w-10 h-10 bg-gray-600 dark:bg-gray-700 border-2 border-black dark:border-gray-500 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+            >
+              <FiArrowLeft size={18} className="text-white" />
+            </button>
+          )}
+          <h1 className="text-xl font-black uppercase">{getTitle()}</h1>
+        </div>
         <button className="w-10 h-10 bg-gray-600 dark:bg-gray-700 border-2 border-black dark:border-gray-500 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center">
           <FiSidebar size={18} className="text-white" />
         </button>
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-8 overflow-y-auto">
+      <div className={`flex-1 flex flex-col ${showServerSettings || selectedRoom ? 'overflow-hidden' : 'overflow-y-auto p-8'}`}>
         {getContent()}
       </div>
 

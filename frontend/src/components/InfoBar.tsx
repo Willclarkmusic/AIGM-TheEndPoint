@@ -1,18 +1,24 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   FiUserPlus,
   FiEdit,
   FiChevronDown,
   FiChevronRight,
+  FiSettings,
 } from "react-icons/fi";
 import { FaHashtag, FaRobot, FaImage } from "react-icons/fa";
+import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import { db } from "../firebase/config";
 
 interface InfoBarProps {
   width: number;
   selectedServer: string | null;
+  selectedServerName?: string;
+  selectedRoom?: string | null;
   selectedTab: "friends" | "feed";
   onTabChange: (tab: "friends" | "feed") => void;
   onContentItemClick?: () => void;
+  onRoomSelect?: (roomId: string, roomName: string, serverId: string) => void;
   isMobile?: boolean;
   onServerSettings?: () => void;
 }
@@ -20,9 +26,12 @@ interface InfoBarProps {
 const InfoBar: React.FC<InfoBarProps> = ({
   width,
   selectedServer,
+  selectedServerName,
+  selectedRoom,
   selectedTab,
   onTabChange,
   onContentItemClick,
+  onRoomSelect,
   isMobile = false,
   onServerSettings,
 }) => {
@@ -35,6 +44,43 @@ const InfoBar: React.FC<InfoBarProps> = ({
     away: false,
     rooms: true,
   });
+
+  const [rooms, setRooms] = useState<
+    Array<{
+      id: string;
+      name: string;
+      type: "chat" | "genai" | "ai-agent";
+    }>
+  >([]);
+
+  // Load rooms when server is selected
+  useEffect(() => {
+    if (!selectedServer) {
+      setRooms([]);
+      return;
+    }
+
+    const roomsRef = collection(db, `servers/${selectedServer}/chat_rooms`);
+    const roomsQuery = query(roomsRef, orderBy("name"));
+
+    const unsubscribe = onSnapshot(
+      roomsQuery,
+      (snapshot) => {
+        const roomsList = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          name: doc.data().name || "Unnamed Room",
+          type: doc.data().type || "chat",
+        }));
+        setRooms(roomsList);
+      },
+      (error) => {
+        console.error("Error loading rooms:", error);
+        setRooms([]);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [selectedServer]);
 
   // Mock data
   const friends = {
@@ -53,11 +99,6 @@ const InfoBar: React.FC<InfoBarProps> = ({
       { id: "8", name: "Henry", status: "away" },
     ],
   };
-
-  // For now, we'll use a default General room. In production, this would be loaded from Firestore
-  const rooms = selectedServer ? [
-    { id: "general", name: "General", type: "chat" },
-  ] : [];
 
   const getRoomIcon = (type: string) => {
     switch (type) {
@@ -241,14 +282,15 @@ const InfoBar: React.FC<InfoBarProps> = ({
         <div className="p-4 h-full overflow-y-auto">
           {/* Server Header */}
           <div className="flex items-center justify-between mb-6">
-            <h2 className="font-black text-lg uppercase text-black dark:text-white">
-              Server {selectedServer}
+            <h2 className="font-black text-lg uppercase text-black dark:text-white truncate">
+              {selectedServerName || "Server"}
             </h2>
-            <button 
+            <button
               onClick={onServerSettings}
-              className="w-8 h-8 bg-blue-400 dark:bg-blue-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+              className="w-8 h-8 bg-purple-400 dark:bg-purple-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+              title="Server Settings"
             >
-              <FiEdit size={16} className="text-black dark:text-white" />
+              <FiSettings size={16} className="text-black dark:text-white" />
             </button>
           </div>
 
@@ -271,8 +313,17 @@ const InfoBar: React.FC<InfoBarProps> = ({
                 {rooms.map((room) => (
                   <div
                     key={room.id}
-                    className="flex items-center gap-3 px-3 py-2 hover:bg-gray-300 dark:hover:bg-gray-700 border-2 border-transparent hover:border-black dark:hover:border-gray-600 transition-all cursor-pointer"
-                    onClick={() => onContentItemClick?.()}
+                    className={`flex items-center gap-3 px-3 py-2 hover:bg-gray-300 dark:hover:bg-gray-700 border-2 transition-all cursor-pointer ${
+                      selectedRoom === room.id
+                        ? "bg-blue-200 dark:bg-blue-800 border-black dark:border-gray-600"
+                        : "border-transparent hover:border-black dark:hover:border-gray-600"
+                    }`}
+                    onClick={() => {
+                      if (selectedServer && onRoomSelect) {
+                        onRoomSelect(room.id, room.name, selectedServer);
+                      }
+                      onContentItemClick?.();
+                    }}
                   >
                     <div className="text-gray-600 dark:text-gray-400">
                       {getRoomIcon(room.type)}

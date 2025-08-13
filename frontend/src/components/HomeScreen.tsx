@@ -25,29 +25,44 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
   const [selectedServer, setSelectedServer] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<"friends" | "feed">("friends");
   const [userStatus, setUserStatus] = useState<string>("online");
-  const [customStatus, setCustomStatus] = useState<{ title: string; color: string } | null>(null);
+  const [customStatus, setCustomStatus] = useState<{
+    title: string;
+    color: string;
+  } | null>(null);
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customTitle, setCustomTitle] = useState("");
   const [customColor, setCustomColor] = useState("#9333EA");
-  
+
   // Mobile states
   const [showMobileSidebar, setShowMobileSidebar] = useState(false);
-  const [mobileFooterTab, setMobileFooterTab] = useState<"profile" | "settings" | null>(null);
+  const [mobileFooterTab, setMobileFooterTab] = useState<
+    "profile" | "settings" | null
+  >(null);
   const [showMobileProfile, setShowMobileProfile] = useState(false);
   const [showMobileSettings, setShowMobileSettings] = useState(false);
-  
+
   const isResizingServer = useRef(false);
   const isResizingInfo = useRef(false);
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
-  
+
   // Server management states
-  const [servers, setServers] = useState<{ id: string; name: string; icon: string; role: string }[]>([]);
+  const [servers, setServers] = useState<
+    { id: string; name: string; icon: string; role: string }[]
+  >([]);
   const [showCreateServerModal, setShowCreateServerModal] = useState(false);
   const [showServerSettingsModal, setShowServerSettingsModal] = useState(false);
+  const [showServerSettingsView, setShowServerSettingsView] = useState(false);
   const [selectedServerData, setSelectedServerData] = useState<{
     id: string;
     name: string;
     role: "owner" | "admin" | "member" | null;
+  } | null>(null);
+
+  // Room selection state
+  const [selectedRoom, setSelectedRoom] = useState<{
+    id: string;
+    name: string;
+    serverId: string;
   } | null>(null);
 
   // Update user presence on activity
@@ -57,7 +72,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
         const userRef = doc(db, "users", user.uid);
         await updateDoc(userRef, {
           lastSeen: serverTimestamp(),
-          status: "online"
+          status: "online",
         });
       } catch (error) {
         console.error("Error updating presence:", error);
@@ -70,9 +85,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
     if (inactivityTimer.current) {
       clearTimeout(inactivityTimer.current);
     }
-    
+
     updatePresence();
-    
+
     // Set timer for 5 minutes of inactivity
     inactivityTimer.current = setTimeout(() => {
       updatePresence();
@@ -100,7 +115,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
       window.removeEventListener("keydown", handleActivity);
       window.removeEventListener("click", handleActivity);
       window.removeEventListener("scroll", handleActivity);
-      
+
       if (inactivityTimer.current) {
         clearTimeout(inactivityTimer.current);
       }
@@ -114,21 +129,26 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
     const initializeUser = async () => {
       try {
         const userRef = doc(db, "users", user.uid);
-        
+
         // Create user document if it doesn't exist
-        await setDoc(userRef, {
-          uid: user.uid,
-          email: user.email || '',
-          displayName: user.displayName || user.email?.split('@')[0] || 'User',
-          status: 'online',
-          lastSeen: serverTimestamp(),
-          createdAt: serverTimestamp(),
-          customStatus: null
-        }, { merge: true }); // Use merge to avoid overwriting existing data
-        
-        console.log('User document initialized');
+        await setDoc(
+          userRef,
+          {
+            uid: user.uid,
+            email: user.email || "",
+            displayName:
+              user.displayName || user.email?.split("@")[0] || "User",
+            status: "online",
+            lastSeen: serverTimestamp(),
+            createdAt: serverTimestamp(),
+            customStatus: null,
+          },
+          { merge: true }
+        ); // Use merge to avoid overwriting existing data
+
+        console.log("User document initialized");
       } catch (error) {
-        console.error('Error initializing user document:', error);
+        console.error("Error initializing user document:", error);
       }
     };
 
@@ -159,48 +179,70 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
 
     const loadUserServers = async () => {
       try {
-        console.log('Loading servers for user:', user.uid);
-        
+        console.log("Loading servers for user:", user.uid);
+
         // Query all member documents where userId equals current user
         const membersQuery = query(
           collectionGroup(db, "members"),
           where("userId", "==", user.uid)
         );
-        
+
         const membersSnapshot = await getDocs(membersQuery);
-        console.log('Found', membersSnapshot.size, 'memberships');
-        
-        const userServersList: { id: string; name: string; icon: string; role: string }[] = [];
+        console.log("Found", membersSnapshot.size, "memberships");
+
+        const userServersList: {
+          id: string;
+          name: string;
+          icon: string;
+          role: string;
+        }[] = [];
 
         for (const memberDoc of membersSnapshot.docs) {
           const memberData = memberDoc.data();
           const serverId = memberDoc.ref.parent.parent?.id;
-          
+
           if (serverId) {
             try {
               // Get server details
-              const serverDoc = await getDocs(query(collection(db, "servers"), where('__name__', '==', serverId)));
-              
+              const serverDoc = await getDocs(
+                query(
+                  collection(db, "servers"),
+                  where("__name__", "==", serverId)
+                )
+              );
+
               if (!serverDoc.empty) {
                 const serverData = serverDoc.docs[0].data();
-                
+
                 userServersList.push({
                   id: serverId,
                   name: serverData.name,
-                  icon: serverData.name.charAt(0).toUpperCase() + (serverData.name.charAt(1) || '').toUpperCase(),
-                  role: memberData.role
+                  icon:
+                    serverData.name.charAt(0).toUpperCase() +
+                    (serverData.name.charAt(1) || "").toUpperCase(),
+                  role: memberData.role,
                 });
-                
-                console.log('Added server:', serverData.name, 'with role:', memberData.role);
+
+                console.log(
+                  "Added server:",
+                  serverData.name,
+                  "with role:",
+                  memberData.role
+                );
               }
             } catch (serverError) {
-              console.error('Error loading server details for', serverId, ':', serverError);
+              console.error(
+                "Error loading server details for",
+                serverId,
+                ":",
+                serverError
+              );
             }
           }
         }
 
         setServers(userServersList);
-        console.log('Loaded', userServersList.length, 'servers');
+        console.log("Loaded", userServersList.length, "servers");
       } catch (error) {
         console.error("Error loading user servers:", error);
       }
@@ -213,7 +255,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
 
   // Handle server creation
   const handleServerCreated = (serverId: string) => {
-    console.log('Server created or joined:', serverId);
+    console.log("Server created or joined:", serverId);
     // Auto-select the new server - the real-time listener will update the list
     setSelectedServer(serverId);
   };
@@ -222,21 +264,38 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
   const handleServerDeleted = () => {
     setSelectedServer(null);
     setShowServerSettingsModal(false);
+    setShowServerSettingsView(false);
     setSelectedServerData(null);
     // The real-time listener will automatically update the server list
   };
 
   // Handle server settings click
   const handleServerSettings = (serverId: string) => {
-    const server = servers.find(s => s.id === serverId);
+    const server = servers.find((s) => s.id === serverId);
     if (server) {
       setSelectedServerData({
         id: server.id,
         name: server.name,
-        role: server.role as "owner" | "admin" | "member"
+        role: server.role as "owner" | "admin" | "member",
       });
-      setShowServerSettingsModal(true);
+      setShowServerSettingsView(true);
+      setSelectedRoom(null); // Clear room selection when opening server settings
     }
+  };
+
+  // Handle room selection
+  const handleRoomSelect = (
+    roomId: string,
+    roomName: string,
+    serverId: string
+  ) => {
+    setSelectedRoom({
+      id: roomId,
+      name: roomName,
+      serverId: serverId,
+    });
+    setShowServerSettingsView(false); // Close server settings if open
+    setShowMobileSidebar(false); // Close mobile sidebar when selecting room
   };
 
   // Handle resizing of ServerBar
@@ -315,22 +374,28 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
       <div className="flex h-screen bg-gray-100 dark:bg-gray-900 overflow-hidden pt-16 pb-16 md:pt-0 md:pb-0">
         {/* Mobile Sidebar Overlay */}
         {showMobileSidebar && (
-          <div 
+          <div
             className="fixed inset-0 bg-black bg-opacity-50 z-30 md:hidden"
             onClick={() => setShowMobileSidebar(false)}
           />
         )}
 
         {/* Combined Sidebar for Mobile - ServerBar + InfoBar */}
-        <div className={`fixed md:relative left-0 top-16 bottom-16 md:top-0 md:bottom-0 right-0 md:right-auto w-full md:w-auto z-40 md:z-auto flex bg-white dark:bg-gray-900 transition-transform duration-300 md:transition-none ${
-          showMobileSidebar ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-        }`}>
+        <div
+          className={`fixed md:relative left-0 top-16 bottom-16 md:top-0 md:bottom-0 right-0 md:right-auto w-full md:w-auto z-40 md:z-auto flex bg-white dark:bg-gray-900 transition-transform duration-300 md:transition-none ${
+            showMobileSidebar
+              ? "translate-x-0"
+              : "-translate-x-full md:translate-x-0"
+          }`}
+        >
           {/* Mobile Server Bar */}
           <MobileServerBar
             servers={servers}
             selectedServer={selectedServer}
             onServerSelect={(serverId) => {
               setSelectedServer(serverId);
+              setSelectedRoom(null); // Clear room selection when changing servers
+              setShowServerSettingsView(false); // Close server settings if open
               // Don't close menu when selecting servers
               // Reset mobile footer when selecting home or a server
               setMobileFooterTab(null);
@@ -338,9 +403,11 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               setShowMobileSettings(false);
             }}
             onCreateServer={() => setShowCreateServerModal(true)}
-          />
+          />;
 
-          {/* Desktop Server Bar with resize handle */}
+          {
+            /* Desktop Server Bar with resize handle */
+          }
           <div className="hidden md:flex">
             <ServerBar
               width={serverBarWidth}
@@ -349,6 +416,8 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               customStatus={customStatus}
               onServerSelect={(serverId) => {
                 setSelectedServer(serverId);
+                setSelectedRoom(null); // Clear room selection when changing servers
+                setShowServerSettingsView(false); // Close server settings if open
                 setShowMobileSidebar(false);
               }}
               selectedServer={selectedServer}
@@ -357,19 +426,23 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               servers={servers}
               onCreateServer={() => setShowCreateServerModal(true)}
             />
-            
+
             {/* Resize Handle for ServerBar */}
             <div
               className="w-1 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 cursor-col-resize transition-colors"
               onMouseDown={handleServerMouseDown}
             />
-          </div>
+          </div>;
 
           {/* Info Bar */}
           <div className="flex flex-1">
             <InfoBar
               width={infoBarWidth}
               selectedServer={selectedServer}
+              selectedServerName={
+                servers.find((s) => s.id === selectedServer)?.name
+              }
+              selectedRoom={selectedRoom?.id || null}
               selectedTab={selectedTab}
               onTabChange={(tab) => {
                 setSelectedTab(tab);
@@ -379,6 +452,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                 // Close menu when clicking content items (friends, rooms, etc.)
                 setShowMobileSidebar(false);
               }}
+              onRoomSelect={handleRoomSelect}
               isMobile={showMobileSidebar}
               onServerSettings={() => {
                 if (selectedServer) {
@@ -386,7 +460,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                 }
               }}
             />
-            
+
             {/* Resize Handle for InfoBar - Desktop only */}
             <div
               className="hidden md:block w-1 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 cursor-col-resize transition-colors"
@@ -396,25 +470,33 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
         </div>
 
         {/* Main Content Area */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex">
           {/* Show different content based on mobile footer selection */}
           {mobileFooterTab === "profile" && showMobileProfile ? (
             <div className="flex-1 overflow-y-auto md:hidden">
               <div className="p-4">
                 <div className="bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_rgba(55,65,81,1)] p-6">
-                  <h2 className="text-2xl font-black mb-6 uppercase text-black dark:text-white">Profile</h2>
-                  
+                  <h2 className="text-2xl font-black mb-6 uppercase text-black dark:text-white">
+                    Profile
+                  </h2>
+
                   {/* User Info */}
                   <div className="space-y-6">
                     <div>
-                      <p className="font-bold text-black dark:text-white mb-1">Email</p>
-                      <p className="text-gray-600 dark:text-gray-400">{user.email}</p>
+                      <p className="font-bold text-black dark:text-white mb-1">
+                        Email
+                      </p>
+                      <p className="text-gray-600 dark:text-gray-400">
+                        {user.email}
+                      </p>
                     </div>
-                    
+
                     {/* Status Section */}
                     <div>
-                      <p className="font-bold text-black dark:text-white mb-3 uppercase">Status</p>
-                      
+                      <p className="font-bold text-black dark:text-white mb-3 uppercase">
+                        Status
+                      </p>
+
                       {/* Preset Status Options */}
                       <div className="space-y-2 mb-4">
                         <button
@@ -425,7 +507,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                             const userRef = doc(db, "users", user.uid);
                             await updateDoc(userRef, {
                               status: "online",
-                              customStatus: null
+                              customStatus: null,
                             });
                           }}
                           className={`w-full flex items-center gap-3 px-3 py-2 border-2 border-black dark:border-gray-600 ${
@@ -435,9 +517,11 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                           } transition-all`}
                         >
                           <div className="w-3 h-3 bg-green-500 border border-black rounded-full" />
-                          <span className="font-bold text-black dark:text-white">Online</span>
+                          <span className="font-bold text-black dark:text-white">
+                            Online
+                          </span>
                         </button>
-                        
+
                         <button
                           onClick={async () => {
                             setUserStatus("idle");
@@ -446,7 +530,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                             const userRef = doc(db, "users", user.uid);
                             await updateDoc(userRef, {
                               status: "idle",
-                              customStatus: null
+                              customStatus: null,
                             });
                           }}
                           className={`w-full flex items-center gap-3 px-3 py-2 border-2 border-black dark:border-gray-600 ${
@@ -456,9 +540,11 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                           } transition-all`}
                         >
                           <div className="w-3 h-3 bg-yellow-500 border border-black rounded-full" />
-                          <span className="font-bold text-black dark:text-white">Idle</span>
+                          <span className="font-bold text-black dark:text-white">
+                            Idle
+                          </span>
                         </button>
-                        
+
                         <button
                           onClick={async () => {
                             setUserStatus("away");
@@ -467,7 +553,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                             const userRef = doc(db, "users", user.uid);
                             await updateDoc(userRef, {
                               status: "away",
-                              customStatus: null
+                              customStatus: null,
                             });
                           }}
                           className={`w-full flex items-center gap-3 px-3 py-2 border-2 border-black dark:border-gray-600 ${
@@ -477,9 +563,11 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                           } transition-all`}
                         >
                           <div className="w-3 h-3 bg-red-500 border border-black rounded-full" />
-                          <span className="font-bold text-black dark:text-white">Away</span>
+                          <span className="font-bold text-black dark:text-white">
+                            Away
+                          </span>
                         </button>
-                        
+
                         {/* Custom Status Button */}
                         <button
                           onClick={() => {
@@ -497,19 +585,26 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                         >
                           <div
                             className="w-3 h-3 border border-black rounded-full"
-                            style={{ backgroundColor: customStatus?.color || customColor }}
+                            style={{
+                              backgroundColor:
+                                customStatus?.color || customColor,
+                            }}
                           />
                           <span className="font-bold text-black dark:text-white">
-                            {customStatus ? customStatus.title : "Custom Status"}
+                            {customStatus
+                              ? customStatus.title
+                              : "Custom Status"}
                           </span>
                         </button>
                       </div>
-                      
+
                       {/* Custom Status Form */}
                       {showCustomForm && (
                         <div className="border-t-2 border-black dark:border-gray-600 pt-4 space-y-3">
                           <div>
-                            <label className="block text-sm font-bold mb-1 uppercase text-black dark:text-white">Status Text</label>
+                            <label className="block text-sm font-bold mb-1 uppercase text-black dark:text-white">
+                              Status Text
+                            </label>
                             <input
                               type="text"
                               value={customTitle}
@@ -519,9 +614,11 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                               maxLength={20}
                             />
                           </div>
-                          
+
                           <div>
-                            <label className="block text-sm font-bold mb-1 uppercase text-black dark:text-white">Color</label>
+                            <label className="block text-sm font-bold mb-1 uppercase text-black dark:text-white">
+                              Color
+                            </label>
                             <div className="grid grid-cols-4 gap-2">
                               {[
                                 "#10B981", // green
@@ -546,18 +643,21 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                               ))}
                             </div>
                           </div>
-                          
+
                           <button
                             onClick={async () => {
                               if (customTitle.trim()) {
-                                const custom = { title: customTitle, color: customColor };
+                                const custom = {
+                                  title: customTitle,
+                                  color: customColor,
+                                };
                                 setUserStatus("custom");
                                 setCustomStatus(custom);
                                 setShowCustomForm(false);
                                 const userRef = doc(db, "users", user.uid);
                                 await updateDoc(userRef, {
                                   status: "custom",
-                                  customStatus: custom
+                                  customStatus: custom,
                                 });
                               }
                             }}
@@ -576,18 +676,23 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
           ) : mobileFooterTab === "settings" && showMobileSettings ? (
             <div className="flex-1 p-4 md:hidden">
               <div className="bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_rgba(55,65,81,1)] p-6">
-                <h2 className="text-2xl font-black mb-4 uppercase text-black dark:text-white">Settings</h2>
+                <h2 className="text-2xl font-black mb-4 uppercase text-black dark:text-white">
+                  Settings
+                </h2>
                 <div className="space-y-2">
-                  <button 
+                  <button
                     onClick={toggleTheme}
                     className="w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 font-bold text-black dark:text-white rounded border-2 border-black dark:border-gray-600 flex items-center gap-3"
                   >
-                    {theme === 'light' ? (
-                      <FiMoon size={20} className="text-black dark:text-white" />
+                    {theme === "light" ? (
+                      <FiMoon
+                        size={20}
+                        className="text-black dark:text-white"
+                      />
                     ) : (
                       <FiSun size={20} className="text-black dark:text-white" />
                     )}
-                    {theme === 'light' ? 'Dark Mode' : 'Light Mode'}
+                    {theme === "light" ? "Dark Mode" : "Light Mode"}
                   </button>
                   <button className="w-full text-left px-4 py-3 hover:bg-gray-100 dark:hover:bg-gray-700 font-bold text-black dark:text-white rounded border-2 border-black dark:border-gray-600">
                     Account Settings
@@ -599,7 +704,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                     Notification Settings
                   </button>
                   <hr className="my-4 border-gray-300 dark:border-gray-600" />
-                  <button 
+                  <button
                     onClick={async () => {
                       try {
                         await signOut(auth);
@@ -621,6 +726,18 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               selectedServer={selectedServer}
               selectedTab={selectedTab}
               user={user}
+              showServerSettings={showServerSettingsView}
+              selectedServerData={selectedServerData}
+              selectedRoom={selectedRoom}
+              onBackFromServerSettings={() => {
+                setShowServerSettingsView(false);
+                setSelectedServerData(null);
+              }}
+              onServerDeleted={() => {
+                setShowServerSettingsView(false);
+                setSelectedServerData(null);
+                setSelectedServer(null);
+              }}
             />
           )}
         </div>
@@ -633,7 +750,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
         user={user}
         onServerCreated={handleServerCreated}
       />
-      
+
       {selectedServerData && (
         <ServerSettingsModal
           isOpen={showServerSettingsModal}

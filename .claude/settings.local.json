@@ -13,7 +13,9 @@
       "Bash(node:*)",
       "Bash(npm run dev:*)",
       "Bash(npm cache clean:*)",
-      "WebFetch(domain:tailwindcss.com)"
+      "WebFetch(domain:tailwindcss.com)",
+      "Bash(grep:*)",
+      "Bash(npm run lint)"
     ],
     "deny": []
   }

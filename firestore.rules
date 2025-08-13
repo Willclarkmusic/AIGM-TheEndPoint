@@ -18,43 +18,78 @@ service cloud.firestore {
       allow read, write, create, update, delete: if isOwner(userId);
     }
 
-    // SERVERS COLLECTION - More permissive for development
+    // Helper function to get user's role in a server
+    function getUserRole(serverId, userId) {
+      return get(/databases/$(database)/documents/servers/$(serverId)/members/$(userId)).data.role;
+    }
+
+    // Helper function to check if user is owner/admin of server
+    function isServerOwnerOrAdmin(serverId, userId) {
+      return isAuthenticated() && 
+             (getUserRole(serverId, userId) in ['owner', 'admin']);
+    }
+
+    // Helper function to check if user is server owner
+    function isServerOwner(serverId, userId) {
+      return isAuthenticated() && 
+             getUserRole(serverId, userId) == 'owner';
+    }
+
+    // Helper function to check if user is member of server
+    function isServerMember(serverId, userId) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/servers/$(serverId)/members/$(userId));
+    }
+
+    // SERVERS COLLECTION - Role-based access
     match /servers/{serverId} {
       // Allow authenticated users to read all servers (needed for join by code)
       allow read: if isAuthenticated();
       // Allow authenticated users to create servers
       allow create: if isAuthenticated();
-      // Allow server owners to update/delete (check ownerIds array)
-      allow update, delete: if isAuthenticated() && 
-                            request.auth.uid in resource.data.ownerIds;
+      // Only owners can update server information
+      allow update: if isServerOwner(serverId, request.auth.uid);
+      // Only owners can delete servers
+      allow delete: if isServerOwner(serverId, request.auth.uid);
       
-      // SERVER MEMBERS SUBCOLLECTION - Very permissive for development
+      // SERVER MEMBERS SUBCOLLECTION - Role-based permissions
       match /members/{memberId} {
-        // Allow authenticated users to read all member documents (needed for collectionGroup queries)
+        // All members can read member list
         allow read: if isAuthenticated();
-        // Allow authenticated users to create member documents (for joining servers)
+        // Allow users to join servers by creating member documents
         allow create: if isAuthenticated();
-        // Allow users to update/delete their own membership
-        allow update, delete: if isAuthenticated() && 
-                              (request.auth.uid == memberId || 
-                               request.auth.uid in get(/databases/$(database)/documents/servers/$(serverId)).data.ownerIds);
+        // Members can leave (delete their own membership)
+        // Owners/Admins can update roles and kick members (except other owners)
+        allow update: if isAuthenticated() && 
+                      (isServerOwnerOrAdmin(serverId, request.auth.uid) &&
+                       resource.data.role != 'owner');
+        allow delete: if isAuthenticated() && 
+                      (request.auth.uid == memberId || 
+                       (isServerOwnerOrAdmin(serverId, request.auth.uid) && 
+                        resource.data.role != 'owner'));
       }
       
-      // CHAT ROOMS SUBCOLLECTION - Permissive for development
+      // CHAT ROOMS SUBCOLLECTION - Role-based permissions
       match /chat_rooms/{roomId} {
-        allow read: if isAuthenticated();
-        allow create: if isAuthenticated();
-        allow update, delete: if isAuthenticated() && 
-                              request.auth.uid in get(/databases/$(database)/documents/servers/$(serverId)).data.ownerIds;
+        // All server members can read rooms
+        allow read: if isServerMember(serverId, request.auth.uid);
+        // Only owners/admins can create rooms
+        allow create: if isServerOwnerOrAdmin(serverId, request.auth.uid);
+        // Only owners/admins can update/delete rooms
+        allow update, delete: if isServerOwnerOrAdmin(serverId, request.auth.uid);
         
         // MESSAGES SUBCOLLECTION
         match /messages/{messageId} {
-          allow read: if isAuthenticated();
-          allow create: if isAuthenticated();
-          allow update: if false; // Messages cannot be edited
+          // Only server members can read messages
+          allow read: if isServerMember(serverId, request.auth.uid);
+          // Only server members can send messages
+          allow create: if isServerMember(serverId, request.auth.uid);
+          // Messages cannot be edited
+          allow update: if false; 
+          // Users can delete their own messages, owners/admins can delete any message
           allow delete: if isAuthenticated() && 
                        (resource.data.senderId == request.auth.uid ||
-                        request.auth.uid in get(/databases/$(database)/documents/servers/$(serverId)).data.ownerIds);
+                        isServerOwnerOrAdmin(serverId, request.auth.uid));
         }
       }
     }

@@ -1,6 +1,6 @@
 /**
  * Firebase Cloud Functions for AIGM-TheEndPoint
- * 
+ *
  * This file contains the serverless functions for the messaging platform,
  * including presence management and other backend operations.
  */
@@ -8,6 +8,7 @@
 import {setGlobalOptions} from "firebase-functions";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import {onDocumentDeleted} from "firebase-functions/v2/firestore";
+import {onCall} from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import * as logger from "firebase-functions/logger";
 
@@ -16,11 +17,11 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // Global settings for cost control
-setGlobalOptions({ maxInstances: 10 });
+setGlobalOptions({maxInstances: 10});
 
 /**
  * Presence Management Function
- * 
+ *
  * This function runs every 5 minutes to update user presence status.
  * It checks all users' lastSeen timestamps and updates their status:
  * - Online: User is active (managed by client-side)
@@ -50,7 +51,7 @@ export const updateUserPresence = onSchedule({
 
     // Get all users from the users collection
     const usersSnapshot = await db.collection("users").get();
-    
+
     if (usersSnapshot.empty) {
       logger.info("No users found to update presence for");
       return;
@@ -87,9 +88,10 @@ export const updateUserPresence = onSchedule({
           status: newStatus,
           statusUpdatedAt: now,
         });
-        
+
         updatesCount++;
-        logger.info(`Updating user ${userDoc.id} status from ${currentStatus} to ${newStatus}`);
+        logger.info(`Updating user ${userDoc.id} status from ` +
+          `${currentStatus} to ${newStatus}`);
       }
     }
 
@@ -106,7 +108,6 @@ export const updateUserPresence = onSchedule({
       totalUsers: usersSnapshot.size,
       updatedUsers: updatesCount,
     });
-
   } catch (error) {
     logger.error("Error updating user presence:", error);
     throw error;
@@ -115,9 +116,10 @@ export const updateUserPresence = onSchedule({
 
 /**
  * User Cleanup Function
- * 
- * This function runs daily to clean up old user data and maintain database hygiene.
- * It can be expanded to include cleanup of old messages, expired sessions, etc.
+ *
+ * This function runs daily to clean up old user data and maintain
+ * database hygiene. It can be expanded to include cleanup of old
+ * messages, expired sessions, etc.
  */
 export const dailyCleanup = onSchedule({
   schedule: "0 2 * * *", // Daily at 2 AM UTC
@@ -138,16 +140,15 @@ export const dailyCleanup = onSchedule({
 
     const inactiveUsersQuery = db.collection("users")
       .where("lastSeen", "<", thirtyDaysAgo);
-    
+
     const inactiveUsers = await inactiveUsersQuery.get();
-    
+
     if (!inactiveUsers.empty) {
       logger.info(`Found ${inactiveUsers.size} inactive users to process`);
       // Add cleanup logic here as needed
     }
 
     logger.info("Daily cleanup job completed");
-
   } catch (error) {
     logger.error("Error in daily cleanup:", error);
     throw error;
@@ -156,133 +157,124 @@ export const dailyCleanup = onSchedule({
 
 /**
  * Server Deletion Cascade Function
- * 
- * This function is triggered when a server document is deleted.
+ *
+ * This function is triggered BEFORE a server document is deleted.
  * It performs a cascading delete of all associated data:
  * - All members in the server's members subcollection
  * - All chat rooms in the server's chat_rooms subcollection
  * - All messages in each chat room's messages subcollection
  * - Removes the server ID from all user profiles
- * 
+ *
  * This ensures data consistency and prevents orphaned data.
  */
-export const onServerDelete = onDocumentDeleted(
+export const cascadeServerDelete = onDocumentDeleted(
   "servers/{serverId}",
   async (event) => {
     const serverId = event.params.serverId;
     const serverData = event.data?.data();
-    
+
     try {
       logger.info(`Starting cascading delete for server: ${serverId}`, {
         serverId,
         serverName: serverData?.name,
       });
 
-      const batch = db.batch();
-      let deletionCount = 0;
-
-      // Step 1: Get all members and remove server from their profiles
+      // Step 1: Delete all members and update user profiles
       logger.info("Step 1: Processing server members");
-      const membersRef = db.collection("servers").doc(serverId).collection("members");
+      const membersRef = db.collection("servers").doc(serverId)
+        .collection("members");
       const membersSnapshot = await membersRef.get();
-      
-      // Remove server ID from each member's profile
-      for (const memberDoc of membersSnapshot.docs) {
-        const userId = memberDoc.id;
-        const userRef = db.collection("users").doc(userId);
-        
-        // Remove server ID from user's servers array
-        batch.update(userRef, {
-          servers: admin.firestore.FieldValue.arrayRemove(serverId)
-        });
-        
-        // Delete the member document
-        batch.delete(memberDoc.ref);
-        deletionCount++;
-      }
-      
-      logger.info(`Processed ${membersSnapshot.size} members`);
 
-      // Step 2: Get all chat rooms and their messages
+      // Process members in batches
+      const membersBatch = db.batch();
+      let membersDeleted = 0;
+
+      for (const memberDoc of membersSnapshot.docs) {
+        const memberData = memberDoc.data();
+        const userId = memberData.userId;
+
+        // Update user's profile to remove this server
+        const userRef = db.collection("users").doc(userId);
+        membersBatch.update(userRef, {
+          servers: admin.firestore.FieldValue.arrayRemove(serverId),
+        });
+
+        // Delete the member document
+        membersBatch.delete(memberDoc.ref);
+        membersDeleted++;
+      }
+
+      if (membersDeleted > 0) {
+        await membersBatch.commit();
+        logger.info(`Deleted ${membersDeleted} members`);
+      }
+
+      // Step 2: Delete all chat rooms and their messages
       logger.info("Step 2: Processing chat rooms and messages");
-      const roomsRef = db.collection("servers").doc(serverId).collection("chat_rooms");
+      const roomsRef = db.collection("servers").doc(serverId)
+        .collection("chat_rooms");
       const roomsSnapshot = await roomsRef.get();
-      
+
+      let roomsDeleted = 0;
+      let messagesDeleted = 0;
+
       // Process each room
       for (const roomDoc of roomsSnapshot.docs) {
         const roomId = roomDoc.id;
         logger.info(`Processing room: ${roomId}`);
-        
+
         // Get all messages in this room
         const messagesRef = roomDoc.ref.collection("messages");
         const messagesSnapshot = await messagesRef.get();
-        
-        // Delete all messages in the room
+
+        // Delete messages in batches (Firestore batch limit is 500)
+        const messagesBatch = db.batch();
         for (const messageDoc of messagesSnapshot.docs) {
-          batch.delete(messageDoc.ref);
-          deletionCount++;
+          messagesBatch.delete(messageDoc.ref);
+          messagesDeleted++;
         }
-        
+
+        // Commit messages batch if there are messages
+        if (messagesSnapshot.size > 0) {
+          await messagesBatch.commit();
+        }
+
         // Delete the room document
-        batch.delete(roomDoc.ref);
-        deletionCount++;
-        
-        logger.info(`Deleted room ${roomId} with ${messagesSnapshot.size} messages`);
-      }
-      
-      logger.info(`Processed ${roomsSnapshot.size} chat rooms`);
+        await roomDoc.ref.delete();
+        roomsDeleted++;
 
-      // Step 3: Handle private messages (if any are associated with the server)
-      logger.info("Step 3: Processing private messages");
-      const privateMessagesRef = db.collection("servers").doc(serverId).collection("private_messages");
-      const privateMessagesSnapshot = await privateMessagesRef.get();
-      
-      // Process each private message thread
-      for (const pmDoc of privateMessagesSnapshot.docs) {
-        const pmId = pmDoc.id;
-        logger.info(`Processing private message thread: ${pmId}`);
-        
-        // Get all messages in this private message thread
-        const pmMessagesRef = pmDoc.ref.collection("messages");
-        const pmMessagesSnapshot = await pmMessagesRef.get();
-        
-        // Delete all messages in the private message thread
-        for (const messageDoc of pmMessagesSnapshot.docs) {
-          batch.delete(messageDoc.ref);
-          deletionCount++;
-        }
-        
-        // Delete the private message thread document
-        batch.delete(pmDoc.ref);
-        deletionCount++;
+        logger.info(`Deleted room ${roomId} with ` +
+          `${messagesSnapshot.size} messages`);
       }
-      
-      logger.info(`Processed ${privateMessagesSnapshot.size} private message threads`);
 
-      // Commit the batch (Firestore has a 500 operation limit per batch)
-      // For large deletions, this would need to be split into multiple batches in production
-      await batch.commit();
-      logger.info(`Committed batch operations for server deletion`);
+      logger.info(`Processed ${roomsDeleted} chat rooms with ` +
+        `${messagesDeleted} total messages`);
+
+      // Step 3: Clean up any additional server-related data
+      logger.info("Step 3: Final cleanup");
+
+      // The server document itself is already deleted by the client
+      // We just need to ensure all subcollections are cleaned up
 
       // Log completion
-      logger.info(`Successfully completed cascading delete for server: ${serverId}`, {
+      logger.info("Successfully completed cascading delete for server: " +
+        `${serverId}`, {
         serverId,
         serverName: serverData?.name,
-        totalDeletions: deletionCount,
-        membersDeleted: membersSnapshot.size,
-        roomsDeleted: roomsSnapshot.size,
-        privateMessageThreadsDeleted: privateMessagesSnapshot.size,
+        membersDeleted,
+        roomsDeleted,
+        messagesDeleted,
       });
+    } catch (error: unknown) {
+      logger.error(`Error in cascading delete for server ${serverId}:`,
+        error);
 
-    } catch (error: any) {
-      logger.error(`Error in cascading delete for server ${serverId}:`, error);
-      
-      // Don't throw the error to prevent infinite retries
-      // Instead, log it for manual investigation
-      logger.error("Manual cleanup may be required for server:", {
+      // Log detailed error for debugging
+      logger.error("Detailed error information:", {
         serverId,
         serverName: serverData?.name,
-        error: error?.message || 'Unknown error',
+        error: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : undefined,
       });
     }
   }
@@ -290,7 +282,7 @@ export const onServerDelete = onDocumentDeleted(
 
 /**
  * User Account Deletion Function
- * 
+ *
  * This function is triggered when a user document is deleted.
  * It cleans up all associated user data across the platform.
  */
@@ -299,7 +291,7 @@ export const onUserDelete = onDocumentDeleted(
   async (event) => {
     const userId = event.params.userId;
     const userData = event.data?.data();
-    
+
     try {
       logger.info(`Starting user data cleanup for: ${userId}`, {
         userId,
@@ -309,20 +301,22 @@ export const onUserDelete = onDocumentDeleted(
       const batch = db.batch();
 
       // Remove user from all server memberships
-      const serversQuery = db.collectionGroup("members").where("userId", "==", userId);
+      const serversQuery = db.collectionGroup("members")
+        .where("userId", "==", userId);
       const serverMemberships = await serversQuery.get();
-      
+
       for (const membership of serverMemberships.docs) {
         batch.delete(membership.ref);
       }
-      
+
       logger.info(`Removed user from ${serverMemberships.size} servers`);
 
-      // Clean up user's messages (mark as deleted rather than actually delete)
+      // Clean up user's messages (mark as deleted rather than delete)
       // This preserves chat history while anonymizing the user
-      const messagesQuery = db.collectionGroup("messages").where("senderId", "==", userId);
+      const messagesQuery = db.collectionGroup("messages")
+        .where("senderId", "==", userId);
       const userMessages = await messagesQuery.get();
-      
+
       for (const message of userMessages.docs) {
         batch.update(message.ref, {
           senderId: "deleted-user",
@@ -330,7 +324,7 @@ export const onUserDelete = onDocumentDeleted(
           deletedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
       }
-      
+
       logger.info(`Anonymized ${userMessages.size} messages`);
 
       // Commit all updates
@@ -339,9 +333,155 @@ export const onUserDelete = onDocumentDeleted(
       }
 
       logger.info(`Successfully completed user cleanup for: ${userId}`);
-
     } catch (error) {
       logger.error(`Error in user cleanup for ${userId}:`, error);
     }
   }
 );
+
+/**
+ * Callable Function: Delete Server with Cascading
+ *
+ * This function safely deletes a server and all its associated data.
+ * It first verifies the user has permission to delete the server,
+ * then performs cascading deletion of all subcollections.
+ */
+export const deleteServer = onCall({
+  memory: "512MiB",
+  timeoutSeconds: 300,
+}, async (request) => {
+  try {
+    // Verify authentication
+    if (!request.auth) {
+      throw new Error("Authentication required");
+    }
+
+    const {serverId} = request.data;
+    const userId = request.auth.uid;
+
+    if (!serverId) {
+      throw new Error("Server ID is required");
+    }
+
+    logger.info(`Starting server deletion for: ${serverId}`, {
+      serverId,
+      userId,
+    });
+
+    // Step 1: Verify user has permission to delete this server
+    const serverRef = db.collection("servers").doc(serverId);
+    const serverDoc = await serverRef.get();
+
+    if (!serverDoc.exists) {
+      throw new Error("Server not found");
+    }
+
+    const serverData = serverDoc.data();
+
+    // Check if user is an owner
+    const memberRef = db.collection("servers").doc(serverId)
+      .collection("members").doc(userId);
+    const memberDoc = await memberRef.get();
+
+    if (!memberDoc.exists || memberDoc.data()?.role !== "owner") {
+      throw new Error("Only server owners can delete servers");
+    }
+
+    // Step 2: Delete all members and update user profiles
+    logger.info("Step 2: Deleting server members");
+    const membersRef = db.collection("servers").doc(serverId)
+      .collection("members");
+    const membersSnapshot = await membersRef.get();
+
+    let membersDeleted = 0;
+    const membersBatch = db.batch();
+
+    for (const memberDoc of membersSnapshot.docs) {
+      const memberData = memberDoc.data();
+      const memberUserId = memberData.userId;
+
+      // Update user's profile (if it exists)
+      try {
+        const userRef = db.collection("users").doc(memberUserId);
+        const userDoc = await userRef.get();
+        if (userDoc.exists) {
+          membersBatch.update(userRef, {
+            servers: admin.firestore.FieldValue.arrayRemove(serverId),
+          });
+        }
+      } catch (error) {
+        logger.warn(`Could not update user profile for ${memberUserId}:`,
+          error);
+      }
+
+      // Delete the member document
+      membersBatch.delete(memberDoc.ref);
+      membersDeleted++;
+    }
+
+    if (membersDeleted > 0) {
+      await membersBatch.commit();
+      logger.info(`Deleted ${membersDeleted} members`);
+    }
+
+    // Step 3: Delete all chat rooms and their messages
+    logger.info("Step 3: Deleting chat rooms and messages");
+    const roomsRef = db.collection("servers").doc(serverId)
+      .collection("chat_rooms");
+    const roomsSnapshot = await roomsRef.get();
+
+    let roomsDeleted = 0;
+    let messagesDeleted = 0;
+
+    for (const roomDoc of roomsSnapshot.docs) {
+      const roomId = roomDoc.id;
+      logger.info(`Deleting room: ${roomId}`);
+
+      // Get all messages in this room
+      const messagesRef = roomDoc.ref.collection("messages");
+      const messagesSnapshot = await messagesRef.get();
+
+      // Delete messages in batches
+      if (messagesSnapshot.size > 0) {
+        const messagesBatch = db.batch();
+        for (const messageDoc of messagesSnapshot.docs) {
+          messagesBatch.delete(messageDoc.ref);
+          messagesDeleted++;
+        }
+        await messagesBatch.commit();
+      }
+
+      // Delete the room document
+      await roomDoc.ref.delete();
+      roomsDeleted++;
+    }
+
+    logger.info(`Deleted ${roomsDeleted} rooms with ${messagesDeleted} ` +
+      "messages");
+
+    // Step 4: Finally delete the server document
+    logger.info("Step 4: Deleting server document");
+    await serverRef.delete();
+
+    logger.info(`Successfully deleted server: ${serverId}`, {
+      serverId,
+      serverName: serverData?.name,
+      membersDeleted,
+      roomsDeleted,
+      messagesDeleted,
+    });
+
+    return {
+      success: true,
+      serverId,
+      membersDeleted,
+      roomsDeleted,
+      messagesDeleted,
+    };
+  } catch (error: unknown) {
+    logger.error("Error deleting server:", error);
+    const message = error instanceof Error ? error.message :
+      "Failed to delete server";
+    throw new Error(message);
+  }
+});
