@@ -104,6 +104,12 @@ curl http://localhost:8080/         # Serves React app
 - Health checks responding
 - Static assets served correctly
 - SPA routing working
+- Firebase configuration embedded
+
+### Current Issue: Firebase Authorized Domains
+**Status**: ⚠️ Requires immediate fix
+**Error**: `auth/unauthorized-domain`
+**Solution**: Add Cloud Run domain to Firebase Console → Authentication → Settings → Authorized domains
 
 ## Deployment Instructions
 

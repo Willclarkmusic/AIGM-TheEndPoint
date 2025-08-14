@@ -175,12 +175,30 @@ options:
 timeout: '600s'
 ```
 
-### 2.6 Test the Deployment
+### 2.6 Configure Firebase for Cloud Run
+
+**IMPORTANT**: Before testing, you must configure Firebase to allow your Cloud Run domain.
+
+1. **Get your Cloud Run URL**:
+   - Go to Cloud Run: https://console.cloud.google.com/run
+   - Find your service and copy the URL (e.g., `https://aigm-frontend-xxxxx-uc.a.run.app`)
+
+2. **Add to Firebase Authorized Domains**:
+   - Go to Firebase Console: https://console.firebase.google.com/
+   - Select your project → Authentication → Settings → Authorized domains
+   - Click "Add domain" and paste your Cloud Run domain (without https://)
+   - Example: `aigm-frontend-xxxxx-uc.a.run.app`
+
+3. **Update Firebase Configuration**:
+   - Replace placeholder values in `/frontend/src/firebase/config.ts` with your actual Firebase config
+   - Get config from Firebase Console → Project Settings → Your apps
+
+### 2.7 Test the Deployment
 
 1. **Trigger a build** by pushing a commit:
    ```bash
-   git add cloudbuild.yaml
-   git commit -m "Add Cloud Build configuration"
+   git add .
+   git commit -m "Add Cloud Build configuration and Firebase setup"
    git push origin main
    ```
 
@@ -192,6 +210,7 @@ timeout: '600s'
    - Go to Cloud Run: https://console.cloud.google.com/run
    - Click on your service
    - Click the URL to test your application
+   - **Test authentication** to ensure Firebase is working
 
 ## Phase 3: Custom Domain with Cloudflare
 
