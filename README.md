@@ -303,10 +303,7 @@ We use privacy-focused analytics to improve the platform:
 
 ## 📞 Contact
 
-- **Email**: contact@aigm-platform.com
-- **Twitter**: [@AIGMPlatform](https://twitter.com/AIGMPlatform)
-- **Discord**: [Join our community](https://discord.gg/aigm)
-- **Website**: [aigm-platform.com](https://aigm-platform.com)
+- **Email**: WillSJClark@gmail.com
 
 ---
 

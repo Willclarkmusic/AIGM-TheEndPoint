@@ -7,13 +7,13 @@ import { getFunctions } from "firebase/functions";
 // Production Firebase configuration
 // Replace these values with your actual Firebase project configuration
 const firebaseConfig = {
-  apiKey: "your-api-key-here",
-  authDomain: "your-project.firebaseapp.com",
-  projectId: "your-project-id",
-  storageBucket: "your-project.appspot.com",
-  messagingSenderId: "your-sender-id",
-  appId: "your-app-id",
-  measurementId: "your-measurement-id",
+  apiKey: "AIzaSyD1UJ7ezP27TBWEiK3itjgMu1Sjb60Ln78",
+  authDomain: "aigm-theendpoint.firebaseapp.com",
+  projectId: "aigm-theendpoint",
+  storageBucket: "aigm-theendpoint.firebasestorage.app",
+  messagingSenderId: "248133304179",
+  appId: "1:248133304179:web:a0a062608e56ab01968f06",
+  measurementId: "G-43M2G4HWEQ",
 };
 
 // Initialize Firebase

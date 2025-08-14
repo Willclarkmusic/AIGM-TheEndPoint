@@ -4,15 +4,24 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
 
-// Environment-aware Firebase configuration
+// Firebase configuration - Replace with your actual project values
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "your-api-key-here",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "your-project.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "your-project-id",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "your-project.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "your-sender-id",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "your-app-id",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "your-measurement-id",
+  apiKey:
+    import.meta.env.VITE_FIREBASE_API_KEY ||
+    "AIzaSyD1UJ7ezP27TBWEiK3itjgMu1Sjb60Ln78",
+  authDomain:
+    import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ||
+    "aigm-theendpoint.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "aigm-theendpoint",
+  storageBucket:
+    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ||
+    "aigm-theendpoint.firebasestorage.app",
+  messagingSenderId:
+    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "248133304179",
+  appId:
+    import.meta.env.VITE_FIREBASE_APP_ID ||
+    "1:248133304179:web:a0a062608e56ab01968f06",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-43M2G4HWEQ",
 };
 
 // Validate configuration
