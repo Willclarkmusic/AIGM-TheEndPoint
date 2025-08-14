@@ -2,7 +2,8 @@ import React, { useState, useRef, KeyboardEvent } from "react";
 import type { User } from "firebase/auth";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase/config";
-import { FiSend } from "react-icons/fi";
+import { FiSend, FiSmile } from "react-icons/fi";
+import EmojiPicker from "./EmojiPicker";
 
 interface MessageComposerProps {
   serverId: string;
@@ -19,7 +20,9 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
 }) => {
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const emojiButtonRef = useRef<HTMLButtonElement>(null);
 
   // Send message function
   const sendMessage = async () => {
@@ -27,6 +30,15 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
     if (!trimmedMessage || sending || disabled) return;
 
     setSending(true);
+    const startTime = performance.now();
+    console.log("💬 Starting message send...");
+
+    // Optimistic UI update - clear input immediately
+    const originalMessage = message;
+    setMessage("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
 
     try {
       const messagesRef = collection(
@@ -34,6 +46,7 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
         `servers/${serverId}/chat_rooms/${roomId}/messages`
       );
 
+      const writeStart = performance.now();
       await addDoc(messagesRef, {
         text: trimmedMessage,
         senderId: user.uid,
@@ -42,16 +55,22 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
         timestamp: serverTimestamp(),
         createdAt: serverTimestamp(),
       });
-
-      // Clear the input
-      setMessage("");
+      const writeTime = performance.now() - writeStart;
+      const totalTime = performance.now() - startTime;
       
-      // Reset textarea height
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
-      }
+      console.log(`📤 Message sent successfully in ${totalTime.toFixed(2)}ms (write: ${writeTime.toFixed(2)}ms)`);
     } catch (error) {
-      console.error("Error sending message:", error);
+      const errorTime = performance.now() - startTime;
+      console.error(`❌ Message send failed after ${errorTime.toFixed(2)}ms:`, error);
+      
+      // Revert optimistic update on error
+      setMessage(originalMessage);
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.style.height = "auto";
+        textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+      }
+      
       alert("Failed to send message. Please try again.");
     } finally {
       setSending(false);
@@ -82,6 +101,39 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
     }
   };
 
+  // Handle emoji selection
+  const handleEmojiSelect = (emoji: string) => {
+    if (textareaRef.current) {
+      const textarea = textareaRef.current;
+      const startPos = textarea.selectionStart;
+      const endPos = textarea.selectionEnd;
+      
+      // Insert emoji at cursor position
+      const newValue = message.substring(0, startPos) + emoji + message.substring(endPos);
+      setMessage(newValue);
+      
+      // Restore cursor position after emoji
+      setTimeout(() => {
+        if (textarea) {
+          const newCursorPos = startPos + emoji.length;
+          textarea.setSelectionRange(newCursorPos, newCursorPos);
+          textarea.focus();
+          
+          // Auto-resize after emoji insertion
+          textarea.style.height = "auto";
+          textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+        }
+      }, 0);
+    }
+    
+    // Don't close the emoji picker - keep it open for multiple selections
+  };
+
+  // Toggle emoji picker
+  const toggleEmojiPicker = () => {
+    setShowEmojiPicker(!showEmojiPicker);
+  };
+
   return (
     <div className="border-t-4 border-black dark:border-gray-600 bg-gray-100 dark:bg-gray-800 p-4">
       <div
@@ -90,7 +142,7 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
       >
         <div className="flex gap-3 items-end">
           {/* Message Input */}
-          <div className="flex-1">
+          <div className="flex-1 relative">
             <textarea
               ref={textareaRef}
               value={message}
@@ -103,7 +155,7 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
               }
               disabled={disabled || sending}
               rows={1}
-              className={`w-full px-4 py-3 border-2 border-black dark:border-gray-600 bg-white dark:bg-gray-700 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:focus:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] transition-all resize-none overflow-hidden font-medium leading-tight ${
+              className={`w-full px-4 py-3 pr-12 border-2 border-black dark:border-gray-600 bg-white dark:bg-gray-700 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:focus:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] transition-all resize-none overflow-hidden font-medium leading-tight ${
                 disabled 
                   ? "opacity-50 cursor-not-allowed" 
                   : ""
@@ -114,6 +166,18 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
                 lineHeight: "1.4",
               }}
             />
+            
+            {/* Emoji Button - Inside textarea */}
+            <button
+              ref={emojiButtonRef}
+              onClick={toggleEmojiPicker}
+              disabled={disabled || sending}
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 w-8 h-8 bg-yellow-400 dark:bg-yellow-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+              title="Add emoji"
+              type="button"
+            >
+              <FiSmile size={14} className="text-black dark:text-white hover:translate-x-0.5 hover:translate-y-0.5 transition-transform" />
+            </button>
           </div>
 
           {/* Send Button - Aligned to bottom of textarea */}
@@ -131,6 +195,15 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
             />
           </button>
         </div>
+        
+        {/* Emoji Picker */}
+        {showEmojiPicker && (
+          <EmojiPicker
+            onEmojiSelect={handleEmojiSelect}
+            onClose={() => setShowEmojiPicker(false)}
+            anchorRef={emojiButtonRef}
+          />
+        )}
 
         {/* Helper Text */}
         <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 text-center">

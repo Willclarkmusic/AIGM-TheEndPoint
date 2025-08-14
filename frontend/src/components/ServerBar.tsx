@@ -123,7 +123,7 @@ const ServerBar: React.FC<ServerBarProps> = ({
       />
 
       {/* Server List */}
-      <div className="flex-1 flex flex-col gap-3 overflow-y-auto overflow-x-hidden">
+      <div className="flex-1 flex flex-col gap-3 overflow-y-auto overflow-x-hidden w-full  items-center">
         {servers.map((server) => (
           <div key={server.id} className="relative">
             <button
@@ -141,22 +141,26 @@ const ServerBar: React.FC<ServerBarProps> = ({
               {/* Status dot for server */}
               <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-black dark:border-gray-600 rounded-full" />
             </button>
-            
+
             {/* Server Name Hover Popup */}
             {hoveredServer === server.id && (
               <div
                 className="absolute z-50 bg-black dark:bg-gray-900 text-white px-3 py-2 text-sm font-bold border-2 border-black dark:border-gray-600 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(55,65,81,1)] whitespace-nowrap pointer-events-none"
-                style={{ 
-                  left: `${width + 8}px`, 
-                  top: '50%', 
-                  transform: 'translateY(-50%)' 
+                style={{
+                  left: `${width + 8}px`,
+                  top: "50%",
+                  transform: "translateY(-50%)",
                 }}
               >
                 {server.name}
                 {/* Arrow pointing to server icon */}
-                <div 
+                <div
                   className="absolute w-0 h-0 border-t-8 border-t-transparent border-b-8 border-b-transparent border-r-8 border-r-black dark:border-r-gray-900"
-                  style={{ left: '-8px', top: '50%', transform: 'translateY(-50%)' }}
+                  style={{
+                    left: "-8px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                  }}
                 />
               </div>
             )}

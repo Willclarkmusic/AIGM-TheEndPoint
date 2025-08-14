@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import type { User } from "firebase/auth";
-import { doc, updateDoc, serverTimestamp, onSnapshot, collection, query, where, getDocs, setDoc, collectionGroup } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp, onSnapshot, query, where, getDocs, setDoc, collectionGroup, getDoc } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { db, auth } from "../firebase/config";
 import ServerBar from "./ServerBar";
@@ -13,6 +13,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import CreateServerModal from "./CreateServerModal";
 import ServerSettingsModal from "./ServerSettingsModal";
 import { FiSun, FiMoon, FiLogOut } from "react-icons/fi";
+import { findOrCreateDMRoom, getDMDisplayName } from "../utils/dmUtils";
 
 interface HomeScreenProps {
   user: User;
@@ -63,6 +64,14 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
     id: string;
     name: string;
     serverId: string;
+  } | null>(null);
+
+  // Friends and DM states
+  const [showFriendSearch, setShowFriendSearch] = useState(false);
+  const [selectedDM, setSelectedDM] = useState<{
+    id: string;
+    name: string;
+    participants: string[];
   } | null>(null);
 
   // Update user presence on activity
@@ -134,6 +143,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
         await setDoc(
           userRef,
           {
+            userId: user.uid, // Add userId field for queries
             uid: user.uid,
             email: user.email || "",
             displayName:
@@ -142,6 +152,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
             lastSeen: serverTimestamp(),
             createdAt: serverTimestamp(),
             customStatus: null,
+            friends: [], // Initialize empty friends array
           },
           { merge: true }
         ); // Use merge to avoid overwriting existing data
@@ -173,9 +184,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
     });
   }, [user]);
 
-  // Load user's servers using collectionGroup query
+  // Load user's servers using optimized batch query
   useEffect(() => {
-    if (!user) return;
+    if (!user?.uid) return;
 
     const loadUserServers = async () => {
       try {
@@ -190,6 +201,33 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
         const membersSnapshot = await getDocs(membersQuery);
         console.log("Found", membersSnapshot.size, "memberships");
 
+        // Extract all server IDs and member data
+        const serverMemberMap = new Map<string, string>();
+        const serverIds: string[] = [];
+
+        for (const memberDoc of membersSnapshot.docs) {
+          const memberData = memberDoc.data();
+          const serverId = memberDoc.ref.parent.parent?.id;
+          
+          if (serverId) {
+            serverIds.push(serverId);
+            serverMemberMap.set(serverId, memberData.role);
+          }
+        }
+
+        if (serverIds.length === 0) {
+          setServers([]);
+          console.log("No servers found for user");
+          return;
+        }
+
+        // OPTIMIZED: Batch fetch all servers using Promise.all
+        const serverPromises = serverIds.map(serverId => 
+          getDoc(doc(db, "servers", serverId))
+        );
+        
+        const serverDocs = await Promise.all(serverPromises);
+        
         const userServersList: {
           id: string;
           name: string;
@@ -197,49 +235,31 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
           role: string;
         }[] = [];
 
-        for (const memberDoc of membersSnapshot.docs) {
-          const memberData = memberDoc.data();
-          const serverId = memberDoc.ref.parent.parent?.id;
+        serverDocs.forEach((serverDoc, index) => {
+          if (serverDoc.exists()) {
+            const serverData = serverDoc.data();
+            const serverId = serverIds[index];
+            const role = serverMemberMap.get(serverId);
 
-          if (serverId) {
-            try {
-              // Get server details
-              const serverDoc = await getDocs(
-                query(
-                  collection(db, "servers"),
-                  where("__name__", "==", serverId)
-                )
-              );
+            userServersList.push({
+              id: serverId,
+              name: serverData.name,
+              icon:
+                serverData.name.charAt(0).toUpperCase() +
+                (serverData.name.charAt(1) || "").toUpperCase(),
+              role: role || "member",
+            });
 
-              if (!serverDoc.empty) {
-                const serverData = serverDoc.docs[0].data();
-
-                userServersList.push({
-                  id: serverId,
-                  name: serverData.name,
-                  icon:
-                    serverData.name.charAt(0).toUpperCase() +
-                    (serverData.name.charAt(1) || "").toUpperCase(),
-                  role: memberData.role,
-                });
-
-                console.log(
-                  "Added server:",
-                  serverData.name,
-                  "with role:",
-                  memberData.role
-                );
-              }
-            } catch (serverError) {
-              console.error(
-                "Error loading server details for",
-                serverId,
-                ":",
-                serverError
-              );
-            }
+            console.log(
+              "Added server:",
+              serverData.name,
+              "with role:",
+              role
+            );
+          } else {
+            console.warn("Server document not found:", serverIds[index]);
           }
-        }
+        });
 
         setServers(userServersList);
         console.log("Loaded", userServersList.length, "servers");
@@ -248,10 +268,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
       }
     };
 
-    // Add a delay to ensure user document is created first
-    const timeout = setTimeout(loadUserServers, 1000);
-    return () => clearTimeout(timeout);
-  }, [user]);
+    // Remove artificial delay - use proper dependency instead
+    loadUserServers();
+  }, [user?.uid]);
 
   // Handle server creation
   const handleServerCreated = (serverId: string) => {
@@ -295,7 +314,56 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
       serverId: serverId,
     });
     setShowServerSettingsView(false); // Close server settings if open
+    setShowFriendSearch(false); // Close friend search if open
+    setSelectedDM(null); // Close DM if open
     setShowMobileSidebar(false); // Close mobile sidebar when selecting room
+  };
+
+  // Handle Add Friend button click
+  const handleAddFriendClick = () => {
+    setShowFriendSearch(true);
+    setSelectedRoom(null); // Close room if open
+    setShowServerSettingsView(false); // Close server settings if open
+    setSelectedDM(null); // Close DM if open
+    setShowMobileSidebar(false); // Close mobile sidebar
+  };
+
+  // Handle friend click to open DM
+  const handleFriendClick = async (friend: any) => {
+    try {
+      let dmId: string;
+      let participants: string[];
+      
+      if (friend.participants) {
+        // Existing DM room
+        dmId = friend.id;
+        participants = friend.participants;
+      } else {
+        // Create new DM with friend
+        const dmRoom = await findOrCreateDMRoom(user.uid, friend.id);
+        dmId = dmRoom.dmId;
+        participants = dmRoom.participants;
+      }
+      
+      // Get display name for the DM
+      const dmName = friend.participants 
+        ? friend.name 
+        : await getDMDisplayName(dmId, participants, user.uid);
+      
+      setSelectedDM({
+        id: dmId,
+        name: dmName,
+        participants: participants,
+      });
+      
+      setSelectedRoom(null); // Close room if open
+      setShowServerSettingsView(false); // Close server settings if open
+      setShowFriendSearch(false); // Close friend search if open
+      setShowMobileSidebar(false); // Close mobile sidebar
+    } catch (error) {
+      console.error("Error opening DM:", error);
+      alert("Failed to open direct message. Please try again.");
+    }
   };
 
   // Handle resizing of ServerBar
@@ -357,6 +425,8 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
 
   // Get title for mobile header
   const getMobileTitle = () => {
+    if (showFriendSearch) return "Find Friends";
+    if (selectedDM) return selectedDM.name;
     if (selectedServer) return `Server ${selectedServer}`;
     return selectedTab === "friends" ? "Friends" : "Social Feed";
   };
@@ -380,12 +450,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
           />
         )}
 
-        {/* Combined Sidebar for Mobile - ServerBar + InfoBar */}
+        {/* Mobile Sidebar - Only visible on mobile */}
         <div
-          className={`fixed md:relative left-0 top-16 bottom-16 md:top-0 md:bottom-0 right-0 md:right-auto w-full md:w-auto z-40 md:z-auto flex bg-white dark:bg-gray-900 transition-transform duration-300 md:transition-none ${
+          className={`fixed left-0 top-16 bottom-16 right-0 w-full z-40 flex bg-white dark:bg-gray-900 transition-transform duration-300 md:hidden ${
             showMobileSidebar
               ? "translate-x-0"
-              : "-translate-x-full md:translate-x-0"
+              : "-translate-x-full"
           }`}
         >
           {/* Mobile Server Bar */}
@@ -396,6 +466,8 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               setSelectedServer(serverId);
               setSelectedRoom(null); // Clear room selection when changing servers
               setShowServerSettingsView(false); // Close server settings if open
+              setShowFriendSearch(false); // Close friend search if open
+              setSelectedDM(null); // Close DM if open
               // Don't close menu when selecting servers
               // Reset mobile footer when selecting home or a server
               setMobileFooterTab(null);
@@ -403,38 +475,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               setShowMobileSettings(false);
             }}
             onCreateServer={() => setShowCreateServerModal(true)}
-          />;
+          />
 
-          {
-            /* Desktop Server Bar with resize handle */
-          }
-          <div className="hidden md:flex">
-            <ServerBar
-              width={serverBarWidth}
-              user={user}
-              userStatus={userStatus}
-              customStatus={customStatus}
-              onServerSelect={(serverId) => {
-                setSelectedServer(serverId);
-                setSelectedRoom(null); // Clear room selection when changing servers
-                setShowServerSettingsView(false); // Close server settings if open
-                setShowMobileSidebar(false);
-              }}
-              selectedServer={selectedServer}
-              onStatusChange={(status) => setUserStatus(status)}
-              onCustomStatusChange={(custom) => setCustomStatus(custom)}
-              servers={servers}
-              onCreateServer={() => setShowCreateServerModal(true)}
-            />
-
-            {/* Resize Handle for ServerBar */}
-            <div
-              className="w-1 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 cursor-col-resize transition-colors"
-              onMouseDown={handleServerMouseDown}
-            />
-          </div>;
-
-          {/* Info Bar */}
+          {/* Mobile Info Bar */}
           <div className="flex flex-1">
             <InfoBar
               width={infoBarWidth}
@@ -459,11 +502,75 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                   handleServerSettings(selectedServer);
                 }
               }}
+              onAddFriendClick={handleAddFriendClick}
+              onFriendClick={handleFriendClick}
+              user={user}
+            />
+          </div>
+        </div>
+
+        {/* Desktop Sidebars - Only visible on desktop */}
+        <div className="hidden md:flex">
+          {/* Desktop Server Bar with resize handle */}
+          <div className="flex">
+            <ServerBar
+              width={serverBarWidth}
+              user={user}
+              userStatus={userStatus}
+              customStatus={customStatus}
+              onServerSelect={(serverId) => {
+                setSelectedServer(serverId);
+                setSelectedRoom(null); // Clear room selection when changing servers
+                setShowServerSettingsView(false); // Close server settings if open
+                setShowMobileSidebar(false);
+              }}
+              selectedServer={selectedServer}
+              onStatusChange={(status) => setUserStatus(status)}
+              onCustomStatusChange={(custom) => setCustomStatus(custom)}
+              servers={servers}
+              onCreateServer={() => setShowCreateServerModal(true)}
+            />
+
+            {/* Resize Handle for ServerBar */}
+            <div
+              className="w-1 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 cursor-col-resize transition-colors"
+              onMouseDown={handleServerMouseDown}
+            />
+          </div>
+
+          {/* Desktop Info Bar */}
+          <div className="flex flex-1">
+            <InfoBar
+              width={infoBarWidth}
+              selectedServer={selectedServer}
+              selectedServerName={
+                servers.find((s) => s.id === selectedServer)?.name
+              }
+              selectedRoom={selectedRoom?.id || null}
+              selectedTab={selectedTab}
+              onTabChange={(tab) => {
+                setSelectedTab(tab);
+                // Don't close menu when changing tabs
+              }}
+              onContentItemClick={() => {
+                // Close menu when clicking content items (friends, rooms, etc.)
+                setShowMobileSidebar(false);
+              }}
+              onRoomSelect={handleRoomSelect}
+              isMobile={false}
+              onServerSettings={() => {
+                if (selectedServer) {
+                  handleServerSettings(selectedServer);
+                }
+              }}
+              onAddFriendClick={handleAddFriendClick}
+              onFriendClick={handleFriendClick}
+              user={user}
             />
 
             {/* Resize Handle for InfoBar - Desktop only */}
             <div
-              className="hidden md:block w-1 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 cursor-col-resize transition-colors"
+              className="w-1 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 cursor-col-resize transition-colors"
               onMouseDown={handleInfoMouseDown}
             />
           </div>
@@ -729,6 +836,8 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               showServerSettings={showServerSettingsView}
               selectedServerData={selectedServerData}
               selectedRoom={selectedRoom}
+              showFriendSearch={showFriendSearch}
+              selectedDM={selectedDM}
               onBackFromServerSettings={() => {
                 setShowServerSettingsView(false);
                 setSelectedServerData(null);
@@ -737,6 +846,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                 setShowServerSettingsView(false);
                 setSelectedServerData(null);
                 setSelectedServer(null);
+              }}
+              onBackFromFriendSearch={() => {
+                setShowFriendSearch(false);
+              }}
+              onBackFromDM={() => {
+                setSelectedDM(null);
               }}
             />
           )}

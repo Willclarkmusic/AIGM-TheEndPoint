@@ -275,6 +275,27 @@ const MessageLog: React.FC<MessageLogProps> = ({
     return "U";
   };
 
+  // Check if message contains only emojis and is 3 or fewer emoji characters
+  const isEmojiOnlyMessage = (text: string): boolean => {
+    if (!text || text.length === 0) return false;
+    
+    // Remove all whitespace for checking
+    const cleanText = text.replace(/\s/g, '');
+    if (cleanText.length === 0) return false;
+    
+    // Unicode ranges for emojis
+    const emojiRegex = /^[\p{Emoji}\p{Emoji_Modifier}\p{Emoji_Component}\p{Emoji_Modifier_Base}\p{Emoji_Presentation}\u200d\ufe0f\u2640\u2642\u2695\u26a7\u2764\ufe0f\u200d\u1f3f3\u1f3f4\u1f3fb\u1f3fc\u1f3fd\u1f3fe\u1f3ff]+$/u;
+    
+    // Check if it's all emojis
+    if (!emojiRegex.test(cleanText)) return false;
+    
+    // Count actual emoji characters (accounting for multi-byte emojis)
+    const emojiCount = [...cleanText].length;
+    
+    // Return true if 3 or fewer emojis
+    return emojiCount <= 3;
+  };
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -287,13 +308,13 @@ const MessageLog: React.FC<MessageLogProps> = ({
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Messages Container - Scrollable with bottom anchor */}
+      {/* Messages Container - Scrollable with proper overflow handling */}
       <div 
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto px-4 py-4 flex flex-col justify-end"
+        className="flex-1 overflow-y-auto px-4 py-4"
         style={{ maxWidth: "1000px", margin: "0 auto", width: "100%" }}
       >
-        <div className="flex flex-col justify-end min-h-full">
+        <div className="min-h-full flex flex-col">
           {/* Load More Button - at top when needed */}
           {hasMore && messages.length > 0 && (
             <div className="text-center mb-4 flex-shrink-0">
@@ -307,7 +328,10 @@ const MessageLog: React.FC<MessageLogProps> = ({
             </div>
           )}
 
-          {/* Messages List - Grows upward from bottom */}
+          {/* Spacer to push messages to bottom when there aren't many */}
+          <div className="flex-1"></div>
+
+          {/* Messages List */}
           <div className="space-y-1 flex-shrink-0">
             {messages.length === 0 ? (
               <div className="text-center py-8 flex items-center justify-center h-full">
@@ -357,7 +381,9 @@ const MessageLog: React.FC<MessageLogProps> = ({
                             isOwnMessage
                               ? "bg-blue-400 dark:bg-blue-500 text-black dark:text-white"
                               : "bg-white dark:bg-gray-700 text-black dark:text-white"
-                          } break-words`}
+                          } break-words ${
+                            isEmojiOnlyMessage(message.text) ? "text-6xl leading-tight" : ""
+                          }`}
                         >
                           {message.text}
                         </div>

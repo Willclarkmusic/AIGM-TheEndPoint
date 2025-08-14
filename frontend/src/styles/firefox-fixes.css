@@ -1,0 +1,151 @@
+/* Firefox Compatibility Fixes */
+
+/* Neo-brutalism shadow fixes with vendor prefixes */
+.shadow-neo-1 {
+  -webkit-box-shadow: 2px 2px 0 rgba(0,0,0,1);
+  -moz-box-shadow: 2px 2px 0 rgba(0,0,0,1);
+  box-shadow: 2px 2px 0 rgba(0,0,0,1);
+}
+
+.shadow-neo-2 {
+  -webkit-box-shadow: 3px 3px 0 rgba(0,0,0,1);
+  -moz-box-shadow: 3px 3px 0 rgba(0,0,0,1);
+  box-shadow: 3px 3px 0 rgba(0,0,0,1);
+}
+
+.shadow-neo-3 {
+  -webkit-box-shadow: 6px 6px 0 rgba(0,0,0,1);
+  -moz-box-shadow: 6px 6px 0 rgba(0,0,0,1);
+  box-shadow: 6px 6px 0 rgba(0,0,0,1);
+}
+
+/* Dark mode shadows */
+.dark .shadow-neo-1 {
+  -webkit-box-shadow: 2px 2px 0 rgba(55,65,81,1);
+  -moz-box-shadow: 2px 2px 0 rgba(55,65,81,1);
+  box-shadow: 2px 2px 0 rgba(55,65,81,1);
+}
+
+.dark .shadow-neo-2 {
+  -webkit-box-shadow: 3px 3px 0 rgba(55,65,81,1);
+  -moz-box-shadow: 3px 3px 0 rgba(55,65,81,1);
+  box-shadow: 3px 3px 0 rgba(55,65,81,1);
+}
+
+.dark .shadow-neo-3 {
+  -webkit-box-shadow: 6px 6px 0 rgba(55,65,81,1);
+  -moz-box-shadow: 6px 6px 0 rgba(55,65,81,1);
+  box-shadow: 6px 6px 0 rgba(55,65,81,1);
+}
+
+/* Flex container fixes for Firefox */
+.flex-container-fix {
+  min-width: 0;
+  min-height: 0;
+}
+
+.flex-item-fix {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+/* Fixed positioning fixes for Firefox mobile */
+.mobile-fixed {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
+}
+
+/* Hardware acceleration for animations */
+.animated-element {
+  will-change: transform, box-shadow;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+/* Better transitions for Firefox */
+.smooth-transition {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  -webkit-transition: -webkit-transform 0.2s ease, box-shadow 0.2s ease;
+  -moz-transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Grid fallbacks */
+.grid-safe {
+  display: grid;
+  display: -ms-grid; /* IE fallback */
+}
+
+/* Scroll fixes for Firefox */
+.scroll-container {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Textarea resize fixes */
+.textarea-auto-resize {
+  resize: none;
+  overflow: hidden;
+  min-height: 2.5rem;
+  max-height: 7.5rem;
+}
+
+/* Firefox-specific viewport fix for mobile */
+@-moz-document url-prefix() {
+  .mobile-viewport {
+    height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+}
+
+/* Button hover fixes */
+.button-neo:hover {
+  transform: translate(0.125rem, 0.125rem);
+  -webkit-transform: translate(0.125rem, 0.125rem);
+  -moz-transform: translate(0.125rem, 0.125rem);
+  box-shadow: none;
+  -webkit-box-shadow: none;
+  -moz-box-shadow: none;
+}
+
+/* Touch action for mobile Firefox */
+.touch-safe {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Firefox desktop sidebar visibility fixes */
+@media (min-width: 768px) {
+  .firefox-desktop-sidebar {
+    display: flex !important;
+    visibility: visible !important;
+    position: relative !important;
+  }
+  
+  .firefox-flex-container {
+    display: flex !important;
+    flex-direction: row !important;
+    height: 100vh !important;
+  }
+}
+
+/* Firefox-specific media query fixes */
+@-moz-document url-prefix() {
+  @media (min-width: 768px) {
+    .hidden.md\:flex {
+      display: flex !important;
+    }
+    
+    .md\:relative {
+      position: relative !important;
+    }
+    
+    .md\:block {
+      display: block !important;
+    }
+  }
+}

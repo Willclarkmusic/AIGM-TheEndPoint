@@ -3,6 +3,8 @@ import type { User } from "firebase/auth";
 import { FiSidebar, FiArrowLeft } from "react-icons/fi";
 import ServerSettings from "./ServerSettings";
 import ChatRoom from "./ChatRoom";
+import FriendSearch from "./FriendSearch";
+import DirectMessageRoom from "./DirectMessageRoom";
 
 interface ActionWindowProps {
   selectedServer: string | null;
@@ -21,6 +23,14 @@ interface ActionWindowProps {
   } | null;
   onBackFromServerSettings?: () => void;
   onServerDeleted?: () => void;
+  showFriendSearch?: boolean;
+  selectedDM?: {
+    id: string;
+    name: string;
+    participants: string[];
+  } | null;
+  onBackFromFriendSearch?: () => void;
+  onBackFromDM?: () => void;
 }
 
 const ActionWindow: React.FC<ActionWindowProps> = ({
@@ -32,10 +42,20 @@ const ActionWindow: React.FC<ActionWindowProps> = ({
   selectedRoom,
   onBackFromServerSettings,
   onServerDeleted,
+  showFriendSearch = false,
+  selectedDM,
+  onBackFromFriendSearch,
+  onBackFromDM,
 }) => {
   const getTitle = () => {
     if (showServerSettings && selectedServerData) {
       return "Server Settings";
+    }
+    if (showFriendSearch) {
+      return "Find Friends";
+    }
+    if (selectedDM) {
+      return selectedDM.name;
     }
     if (selectedRoom) {
       return selectedRoom.name;
@@ -56,6 +76,28 @@ const ActionWindow: React.FC<ActionWindowProps> = ({
           user={user}
           userRole={selectedServerData.role}
           onServerDeleted={onServerDeleted}
+        />
+      );
+    }
+
+    // Show FriendSearch when requested
+    if (showFriendSearch) {
+      return (
+        <FriendSearch
+          user={user}
+          onBackToFriends={onBackFromFriendSearch}
+        />
+      );
+    }
+
+    // Show DirectMessageRoom when a DM is selected
+    if (selectedDM) {
+      return (
+        <DirectMessageRoom
+          dmId={selectedDM.id}
+          participants={selectedDM.participants}
+          user={user}
+          roomName={selectedDM.name}
         />
       );
     }
@@ -83,21 +125,20 @@ const ActionWindow: React.FC<ActionWindowProps> = ({
 
     if (selectedTab === "friends") {
       return (
-        <div className="text-center">
-          <h2 className="text-2xl font-black mb-4 uppercase text-black dark:text-white">Add a Friend</h2>
+        <div className="text-center h-full flex items-center justify-center">
           <div className="max-w-md mx-auto">
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Search for friends by their username or email address.
+            <h2 className="text-3xl font-black mb-6 uppercase text-black dark:text-white">Friends</h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-8">
+              Click the "Add Friend" button in the sidebar to search for friends, or select a friend to start chatting.
             </p>
-            <div className="space-y-4">
-              <input
-                type="text"
-                placeholder="Enter username or email..."
-                className="w-full px-4 py-3 border-4 border-black dark:border-gray-600 bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:focus:shadow-[4px_4px_0px_0px_rgba(55,65,81,1)] transition-all text-lg"
-              />
-              <button className="w-full bg-blue-400 dark:bg-blue-500 text-black dark:text-white font-black py-3 px-6 border-4 border-black dark:border-gray-600 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all uppercase">
-                Search Users
-              </button>
+            <div className="bg-blue-100 dark:bg-blue-900 border-4 border-black dark:border-gray-600 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_rgba(55,65,81,1)] p-6">
+              <h3 className="text-lg font-black uppercase text-black dark:text-white mb-2">Getting Started</h3>
+              <ul className="text-left text-sm text-gray-700 dark:text-gray-300 space-y-2">
+                <li>• Use the <strong>Add Friend</strong> button to search for users</li>
+                <li>• Send friend requests to connect with others</li>
+                <li>• Click on friends to start private conversations</li>
+                <li>• Recent conversations appear at the top of the list</li>
+              </ul>
             </div>
           </div>
         </div>
@@ -144,9 +185,25 @@ const ActionWindow: React.FC<ActionWindowProps> = ({
       {/* Top Bar */}
       <div className="bg-gray-800 dark:bg-gray-950 text-white px-6 py-4 border-b-4 border-black dark:border-gray-600 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          {showServerSettings && onBackFromServerSettings && (
+          {(showServerSettings && onBackFromServerSettings) && (
             <button 
               onClick={onBackFromServerSettings}
+              className="w-10 h-10 bg-gray-600 dark:bg-gray-700 border-2 border-black dark:border-gray-500 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+            >
+              <FiArrowLeft size={18} className="text-white" />
+            </button>
+          )}
+          {(showFriendSearch && onBackFromFriendSearch) && (
+            <button 
+              onClick={onBackFromFriendSearch}
+              className="w-10 h-10 bg-gray-600 dark:bg-gray-700 border-2 border-black dark:border-gray-500 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+            >
+              <FiArrowLeft size={18} className="text-white" />
+            </button>
+          )}
+          {(selectedDM && onBackFromDM) && (
+            <button 
+              onClick={onBackFromDM}
               className="w-10 h-10 bg-gray-600 dark:bg-gray-700 border-2 border-black dark:border-gray-500 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
             >
               <FiArrowLeft size={18} className="text-white" />
@@ -160,7 +217,7 @@ const ActionWindow: React.FC<ActionWindowProps> = ({
       </div>
 
       {/* Main Content */}
-      <div className={`flex-1 flex flex-col ${showServerSettings || selectedRoom ? 'overflow-hidden' : 'overflow-y-auto p-8'}`}>
+      <div className={`flex-1 flex flex-col ${showServerSettings || selectedRoom || showFriendSearch || selectedDM ? 'overflow-hidden' : 'overflow-y-auto p-8'}`}>
         {getContent()}
       </div>
 

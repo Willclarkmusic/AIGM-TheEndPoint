@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { FiX, FiPlus, FiUsers } from "react-icons/fi";
-import { collection, doc, setDoc, serverTimestamp, query, where, getDocs } from "firebase/firestore";
+import { collection, doc, setDoc, serverTimestamp, query, where, getDocs, limit } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type { User } from "firebase/auth";
 
@@ -23,8 +23,43 @@ const CreateServerModal: React.FC<CreateServerModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Generate a random 5-digit server code
-  const generateServerCode = () => {
+  // Optimized server code generation using timestamp + random
+  const generateUniqueServerCode = async (): Promise<string> => {
+    // Try timestamp-based approach first (more likely to be unique)
+    const timestamp = Date.now();
+    const baseCode = (timestamp % 100000).toString().padStart(5, '0');
+    
+    // Quick existence check
+    const existingServerQuery = query(
+      collection(db, "servers"),
+      where("code", "==", baseCode),
+      limit(1)
+    );
+    
+    const existingServers = await getDocs(existingServerQuery);
+    
+    if (existingServers.empty) {
+      return baseCode;
+    }
+    
+    // Fallback: Add random suffix if timestamp code exists
+    for (let i = 0; i < 3; i++) {
+      const randomSuffix = Math.floor(Math.random() * 10);
+      const modifiedCode = baseCode.slice(0, 4) + randomSuffix;
+      
+      const fallbackQuery = query(
+        collection(db, "servers"),
+        where("code", "==", modifiedCode),
+        limit(1)
+      );
+      
+      const fallbackServers = await getDocs(fallbackQuery);
+      if (fallbackServers.empty) {
+        return modifiedCode;
+      }
+    }
+    
+    // Final fallback: truly random
     return Math.floor(10000 + Math.random() * 90000).toString();
   };
 
@@ -38,22 +73,15 @@ const CreateServerModal: React.FC<CreateServerModalProps> = ({
     setIsLoading(true);
     setError("");
 
+    const startTime = performance.now();
+    console.log("🚀 Starting server creation...");
+
     try {
-      let serverCode;
-      let codeExists = true;
-      
-      // Generate a unique server code
-      while (codeExists) {
-        serverCode = generateServerCode();
-        
-        // Check if this code already exists
-        const existingServerQuery = query(
-          collection(db, "servers"),
-          where("code", "==", serverCode)
-        );
-        const existingServers = await getDocs(existingServerQuery);
-        codeExists = !existingServers.empty;
-      }
+      // Generate a unique server code using optimized method
+      const codeGenStart = performance.now();
+      const serverCode = await generateUniqueServerCode();
+      const codeGenTime = performance.now() - codeGenStart;
+      console.log(`✅ Unique code generated in ${codeGenTime.toFixed(2)}ms`);
       
       // Create the server document
       const serverRef = doc(collection(db, "servers"));
@@ -61,7 +89,13 @@ const CreateServerModal: React.FC<CreateServerModalProps> = ({
 
       console.log("Creating server with ID:", serverId, "and code:", serverCode);
 
-      await setDoc(serverRef, {
+      // Use batch writes for better performance
+      const batchStart = performance.now();
+      const { writeBatch } = await import("firebase/firestore");
+      const batch = writeBatch(db);
+
+      // Add server document to batch
+      batch.set(serverRef, {
         name: serverName.trim(),
         code: serverCode,
         ownerIds: [user.uid],
@@ -69,11 +103,9 @@ const CreateServerModal: React.FC<CreateServerModalProps> = ({
         createdBy: user.uid,
       });
 
-      console.log("Server document created, adding creator as owner member...");
-
-      // Add the creator as the first member with owner role
+      // Add member document to batch
       const memberRef = doc(collection(serverRef, "members"), user.uid);
-      await setDoc(memberRef, {
+      batch.set(memberRef, {
         userId: user.uid,
         role: "owner",
         joinedAt: serverTimestamp(),
@@ -81,25 +113,34 @@ const CreateServerModal: React.FC<CreateServerModalProps> = ({
         email: user.email || '',
       });
 
-      console.log("Creator added as owner member, creating default General room...");
-
-      // Create the default #General room
+      // Add default room to batch
       const roomRef = doc(collection(serverRef, "chat_rooms"));
-      await setDoc(roomRef, {
+      batch.set(roomRef, {
         name: "General",
         type: "chat",
         createdAt: serverTimestamp(),
         createdBy: user.uid,
       });
 
-      console.log("Server creation complete!");
-      console.log("Server created successfully:", { serverId, serverCode, serverName: serverName.trim() });
+      // Execute all writes atomically
+      await batch.commit();
+      const batchTime = performance.now() - batchStart;
+      console.log(`⚡ All server documents created in single batch: ${batchTime.toFixed(2)}ms`);
+
+      const totalTime = performance.now() - startTime;
+      console.log(`🎉 Server creation complete! Total time: ${totalTime.toFixed(2)}ms`);
+      console.log("Performance breakdown:", {
+        codeGeneration: `${codeGenTime.toFixed(2)}ms`,
+        batchWrite: `${batchTime.toFixed(2)}ms`,
+        total: `${totalTime.toFixed(2)}ms`
+      });
       
       onServerCreated?.(serverId);
       onClose();
       setServerName("");
     } catch (error) {
-      console.error("Error creating server:", error);
+      const errorTime = performance.now() - startTime;
+      console.error(`❌ Server creation failed after ${errorTime.toFixed(2)}ms:`, error);
       setError("Failed to create server. Please try again.");
     } finally {
       setIsLoading(false);
