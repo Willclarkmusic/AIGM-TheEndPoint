@@ -1,428 +1,561 @@
-Project Prompts
+Markdown
+
+# Project Prompts
+
 This document contains the complete, detailed prompts for building all three phases of the MVP, along with the expected outcome and testing instructions for each.
 
-Phase 1: The Core Messaging Platform
+## Phase 1: The Core Messaging Platform
+
 The prompts in this phase focus on establishing the foundational, user-facing parts of the application.
 
-Prompt 1: User Authentication & Profile
-Prompt to give Claude Code:
+### Prompt 1: User Authentication & Profile
+
+**Prompt to give Claude Code:**
 
 You are an expert full-stack developer with extensive experience in React, Tailwind CSS, and Firebase. Your task is to build a user authentication system for a messaging and social platform. Your goal is to create the login, signup, and profile creation flow based on the project documents.
 
 Please read the following documents to understand the project's requirements:
-- @/CLAUDE.md
-- @/ARCHITECTURE.md
-- @/UIUX.md
 
-### Task: Build the Authentication System
+@/docs/CLAUDE.md
 
-1.  **Setup & Dependencies:** Initialize a new React project using Vite in the `/frontend` directory. Install all necessary dependencies for Firebase (Authentication, Firestore), React, and Tailwind CSS. Ensure a `.env.local` file is created for local Firebase configuration.
-2.  **Login Component:** Create a `LoginPage.tsx` component in the `/frontend` directory. It should have fields for email and password, a link to the signup page, and buttons for Google and GitHub social logins. The UI must strictly follow the neo-brutalism style described in `@/UIUX.md`.
-3.  **Signup Component:** Create a `SignupPage.tsx` component in the `/frontend` directory with fields for email, username, password, and confirm password. It should also have buttons for Google and GitHub social logins.
-4.  **Firebase Integration:**
-    * Implement Firebase Authentication for email/password, Google, and GitHub providers.
-    * Upon successful user creation, automatically create a new document in the `users` Firestore collection with the user's `uid`, `name`, `email`, and an initial `credits` value of 10.
-5.  **Routing:** Implement basic React Router to switch between the login and signup pages.
-6.  **Final Output:** Provide a single, complete file with all the code for the project, including the Firebase initialization, components, and styling. The code must be production-ready and fully commented. Assume the `firebase.js` configuration file is in the root and is accessible.
+@/docs/WORKFLOW.md
 
-Expected Outcome:
-A complete, self-contained React application with two pages: a login form and a signup form. Both forms will be visually consistent with the neo-brutalism style and will have functional buttons for email/password and social logins. New users will be successfully created in Firebase Authentication and a corresponding user document will appear in the Firestore users collection.
+@/docs/ARCHITECTURE.md
 
-How to Test:
+@/docs/UIUX.md
 
-Open the app in your browser. The login page should appear.
+Task: Build the Authentication System
+Setup & Dependencies: Initialize a new React project using Vite in the /frontend directory. Install all necessary dependencies for Firebase (Authentication, Firestore), React, and Tailwind CSS. Ensure a .env.local file is created for local Firebase configuration.
 
-Navigate to the signup page. Create a new user with an email and password.
+Login Component: Create a LoginPage.tsx component in the /frontend directory. It should have fields for email and password, a link to the signup page, and buttons for Google and GitHub social logins. The UI must strictly follow the neo-brutalism style described in @/docs/UIUX.md.
 
-Check the Firebase Console. A new user should be listed under "Authentication," and a new document should be created in the "Firestore Database" under the users collection with the correct fields and initial credits value.
+Signup Component: Create a SignupPage.tsx component in the /frontend directory with fields for email, username, password, and confirm password. It should also have buttons for Google and GitHub social logins.
 
-Try logging in with the new user. It should navigate you to a blank home page.
+Firebase Integration:
 
-Test the Google and GitHub login buttons to ensure they work correctly and also create a user and Firestore document.
+Implement Firebase Authentication for email/password, Google, and GitHub providers.
 
-Verify all buttons have the thick black drop shadow and bouncy-style feel.
+Upon successful user creation, automatically create a new document in the users Firestore collection with the user's uid, name, email, and an initial credits value of 10.
 
-Prompt 2: Core UI Layout & Presence System
-Prompt to give Claude Code:
+Routing: Implement basic React Router to switch between the login and signup pages.
+
+Final Output: Provide a single, complete file with all the code for the project, including the Firebase initialization, components, and styling. The code must be production-ready and fully commented. Assume the firebase.js configuration file is in the root and is accessible.
+
+
+**Expected Outcome:**
+A complete, self-contained React application with two pages: a login form and a signup form. Both forms will be visually consistent with the neo-brutalism style and will have functional buttons for email/password and social logins. New users will be successfully created in Firebase Authentication and a corresponding user document will appear in the Firestore `users` collection.
+
+**How to Test:**
+1. Open the app in your browser. The login page should appear.
+2. Navigate to the signup page. Create a new user with an email and password.
+3. Check the Firebase Console. A new user should be listed under "Authentication," and a new document should be created in the "Firestore Database" under the `users` collection with the correct fields and initial `credits` value.
+4. Try logging in with the new user. It should navigate you to a blank home page.
+5. Test the Google and GitHub login buttons to ensure they work correctly and also create a user and Firestore document.
+6. Verify all buttons have the thick black drop shadow and bouncy-style feel.
+
+---
+
+### Prompt 2: Core UI Layout & Presence System
+
+**Prompt to give Claude Code:**
 
 You are an expert full-stack developer continuing to build a messaging platform. Your task is to create the core layout for the home screen and implement the hybrid real-time presence system.
 
 Please read the following documents to understand the project's requirements:
-- @/CLAUDE.md
-- @/ARCHITECTURE.md
-- @/UIUX.md
 
-### Task: Build the Core Layout and Presence System
+@/docs/CLAUDE.md
 
-1.  **Home Screen Layout:** Create a `HomeScreen.tsx` component. It should render the entire three-column layout: the `ServerBar`, `InfoBar`, and `ActionWindow`. The layout should be responsive and styled with Tailwind CSS to match the neo-brutalism design. The `ServerBar` and `InfoBar` should be fixed sidebars, and the `ActionWindow` should take up the remaining space.
-2.  **User Status UI:** Implement the UI for displaying the user's status in the `ServerBar` as a colored dot on their profile icon. This status should be selectable via a pop-up menu that appears when the profile icon is clicked.
-3.  **Presence System Logic:**
-    * Implement a hybrid presence system:
-        * On the client side, use a Firestore listener to update a `lastSeen` timestamp in the current user's document in the `users` collection whenever the user is active (e.g., on a mouse move or keyboard event).
-        * The client should also update the `status` field to "Online" when active.
-    * Create a Firebase Cloud Function (in the `/functions` directory) that is triggered on a schedule (e.g., every 5 minutes). This function should check all user documents in the `users` collection. If a user's `lastSeen` timestamp is older than 10 minutes, the function should update their `status` to "Idle" and then "Away" after an additional 10 minutes.
-4.  **Final Output:** Provide the complete and updated React components, along with the Firebase Cloud Function code. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+@/docs/WORKFLOW.md
 
-Expected Outcome:
-The home page will now display the complete three-column layout. The user's profile icon in the bottom-left corner will show a colored dot. When the user is active, the dot will be green. After a period of inactivity, the dot will turn yellow and then red, managed by the Cloud Function. The UI for selecting a custom status will also be present.
+@/docs/ARCHITECTURE.md
 
-How to Test:
+@/docs/UIUX.md
 
-Log in to the app and verify the three-column layout is correct and follows the neo-brutalism style.
+Task: Build the Core Layout and Presence System
+Home Screen Layout: Create a HomeScreen.tsx component. It should render the entire three-column layout: the ServerBar, InfoBar, and ActionWindow. The layout should be responsive and styled with Tailwind CSS to match the neo-brutalism design. The ServerBar and InfoBar should be fixed sidebars, and the ActionWindow should take up the remaining space.
 
-Observe the colored dot on your profile icon. It should be green ("Online").
+User Status UI: Implement the UI for displaying the user's status in the ServerBar as a colored dot on their profile icon. This status should be selectable via a pop-up menu that appears when the profile icon is clicked.
 
-Leave the app tab open but idle for 5-10 minutes. Check the Firestore document for your user; the status should change to "Idle."
+Presence System Logic:
 
-Leave the tab idle for another 10 minutes. The status should change to "Away."
+Implement a hybrid presence system:
 
-Click on the profile icon, select a different status, and verify that it updates in Firestore.
+On the client side, use a Firestore listener to update a lastSeen timestamp in the current user's document in the users collection whenever the user is active (e.g., on a mouse move or keyboard event).
 
-Prompt 3: Server/Room Management & Roles
-Prompt to give Claude Code:
+The client should also update the status field to "Online" when active.
+
+Create a Firebase Cloud Function (in the /functions directory) that is triggered on a schedule (e.g., every 5 minutes). This function should check all user documents in the users collection. If a user's lastSeen timestamp is older than 10 minutes, the function should update their status to "Idle" and then "Away" after an additional 10 minutes.
+
+Final Output: Provide the complete and updated React components, along with the Firebase Cloud Function code. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+
+
+**Expected Outcome:**
+The home page will now display the complete layout described in the UIUX document. The user's profile icon in the bottom-left corner will show a colored dot. When the user is active, the dot will be green. After a period of inactivity, the dot will turn yellow and then red, managed by the Cloud Function. The UI for selecting a custom status will also be present.
+
+**How to Test:**
+1. Log in to the app and verify the three-column layout is correct and follows the neo-brutalism style.
+2. Observe the colored dot on your profile icon. It should be green ("Online").
+3. Leave the app tab open but idle for 5-10 minutes. Check the Firestore document for your user; the `status` should change to "Idle."
+4. Leave the tab idle for another 10 minutes. The `status` should change to "Away."
+5. Click on the profile icon, select a different status, and verify that it updates in Firestore.
+
+---
+
+### Prompt 3: Server/Room Management & Roles
+
+**Prompt to give Claude Code:**
 
 You are an expert full-stack developer continuing to build a messaging platform. Your task is to implement the server and room management system, including the crucial server role and deletion logic.
 
 Please read the following documents to understand the project's requirements:
-- @/CLAUDE.md
-- @/ARCHITECTURE.md
-- @/UIUX.md
 
-### Task: Implement Server/Room Management & Roles
+@/docs/CLAUDE.md
 
-1.  **Create Server Modal:** Build a modal that is triggered by the "+" button in the `ServerBar`. This modal should contain a form for creating a new server with a name and a button to join an existing server with a 5-digit code.
-2.  **Server Creation Logic:**
-    * When a user creates a new server, a new document should be created in the `servers` collection.
-    * Automatically create a subcollection `members` with the creator as the first member and a `role` of "owner."
-    * Automatically create a subcollection `chat_rooms` with a single document for the `#General` room.
-    * The server should have a `ownerIds` field as an array containing the creator's UID. The limit for owners should be set to 3 for the MVP.
-3.  **Server Settings Modal & Roles:**
-    * Create a server settings modal that is accessible via a button in the `InfoBar`.
-    * This modal should have a "Roles" tab that is only visible to users with an "owner" role.
-    * The "Roles" tab should contain a search bar that filters through all server members and allows the owner to change the role of any member.
-4.  **Server Deletion Logic (Cloud Function):**
-    * Create a Firebase Cloud Function (in the `/functions` directory) that is triggered by the deletion of a document in the `servers` collection.
-    * This function **must** programmatically perform a cascading delete, removing all associated `members`, `chat_rooms`, and all `messages` subcollections. It should also remove the server's ID from all user profiles.
-5.  **Final Output:** Provide the complete and updated React components, along with the Firebase Cloud Function code and any necessary Firestore security rules to enforce the `owner`/`admin`/`member` roles. The code must be production-ready and fully commented.
+@/docs/WORKFLOW.md
 
-Expected Outcome:
+@/docs/ARCHITECTURE.md
+
+@/docs/UIUX.md
+
+Task: Implement Server/Room Management & Roles
+Create Server Modal: Build a modal that is triggered by the "+" button in the ServerBar. This modal should contain a form for creating a new server with a name and a button to join an existing server with a 5-digit code.
+
+Server Creation Logic:
+
+When a user creates a new server, a new document should be created in the servers collection.
+
+Automatically create a subcollection members with the creator as the first member and a role of "owner."
+
+Automatically create a subcollection chat_rooms with a single document for the #General room.
+
+The server should have a ownerIds field as an array containing the creator's UID. The limit for owners should be set to 3 for the MVP.
+
+Server Settings Modal & Roles:
+
+Create a server settings modal that is accessible via a button in the InfoBar.
+
+This modal should have a "Roles" tab that is only visible to users with an "owner" role.
+
+The "Roles" tab should contain a search bar that filters through all server members and allows the owner to change the role of any member.
+
+Server Deletion Logic (Cloud Function):
+
+Create a Firebase Cloud Function (in the /functions directory) that is triggered by the deletion of a document in the servers collection.
+
+This function must programmatically perform a cascading delete, removing all associated members, chat_rooms, and all messages subcollections. It should also remove the server's ID from all user profiles.
+
+Final Output: Provide the complete and updated React components, along with the Firebase Cloud Function code and any necessary Firestore security rules to enforce the owner/admin/member roles. The code must be production-ready and fully commented.
+
+
+**Expected Outcome:**
 The "+" button will open a modal that allows users to create or join servers. Server owners can access a roles management tab in the settings modal. Most critically, the server deletion process will be handled safely and completely by a Cloud Function.
 
-How to Test:
+**How to Test:**
+1. Click the "+" button and create a new server. Verify it appears in your `ServerBar` and that a new document and subcollections are created in Firestore.
+2. Have another user join the server using the invite code. Verify they are added to the `members` subcollection with a `role` of "member."
+3. As the owner, open the server settings, navigate to the "Roles" tab, and change the other user's role to "admin." Verify the change is reflected in Firestore.
+4. As the owner, delete the server. Verify that all server-related data is completely removed from the database.
 
-Click the "+" button and create a new server. Verify it appears in your ServerBar and that a new document and subcollections are created in Firestore.
+---
 
-Have another user join the server using the invite code. Verify they are added to the members subcollection with a role of "member."
+### Prompt 4: Basic Chat & Message Deletion
 
-As the owner, open the server settings, navigate to the "Roles" tab, and change the other user's role to "admin." Verify the change is reflected in Firestore.
-
-As the owner, delete the server. Verify that all server-related data is completely removed from the database.
-
-Prompt 4: Basic Chat & Message Deletion
-Prompt to give Claude Code:
+**Prompt to give Claude Code:**
 
 You are an expert full-stack developer continuing to build a messaging platform. Your task is to implement the core chat functionality and message deletion based on user roles.
 
 Please read the following documents to understand the project's requirements:
-- @/CLAUDE.md
-- @/ARCHITECTURE.md
-- @/UIUX.md
 
-### Task: Build the Basic Chat & Message Deletion
+@/docs/CLAUDE.md
 
-1.  **Message Log & Real-time:** In the `ActionWindow`, create the `MessageLog.tsx` component. This component should display messages from a `messages` subcollection in a Firestore room, using a real-time listener to show new messages instantly.
-2.  **Message Composer:** Create a basic, text-only `MessageComposer.tsx` component with an input field and a send button.
-3.  **UI Logic:**
-    * Align messages from the current user to the right and all other messages to the left.
-    * Implement message grouping and timestamps as specified in the `UIUX.md` (new block of messages, or gap of >2 hours).
-    * Display a button to delete a message on hover.
-4.  **Message Deletion Logic:**
-    * Implement the logic for a user to delete their own messages.
-    * Implement a separate function that allows a user with an "owner" or "admin" role to delete any message in the server. This should be enforced by Firestore security rules.
-5.  **Final Output:** Provide the complete and updated React components, along with the necessary Firestore security rules. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+@/docs/WORKFLOW.md
 
-Expected Outcome:
+@/docs/ARCHITECTURE.md
+
+@/docs/UIUX.md
+
+Task: Build the Basic Chat & Message Deletion
+Message Log & Real-time: In the ActionWindow, create the MessageLog.tsx component. This component should display messages from a messages subcollection in a Firestore room, using a real-time listener to show new messages instantly.
+
+Message Composer: Create a basic, text-only MessageComposer.tsx component with an input field and a send button.
+
+UI Logic:
+
+Align messages from the current user to the right and all other messages to the left.
+
+Implement message grouping and timestamps as specified in the UIUX.md (new block of messages, or gap of >2 hours).
+
+Display a button to delete a message on hover.
+
+Message Deletion Logic:
+
+Implement the logic for a user to delete their own messages.
+
+Implement a separate function that allows a user with an "owner" or "admin" role to delete any message in the server. This should be enforced by Firestore security rules.
+
+Final Output: Provide the complete and updated React components, along with the necessary Firestore security rules. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+
+
+**Expected Outcome:**
 The Action Window will now function as a real-time chat room. Messages will be sent, received, and displayed with correct alignment and grouping. Users will be able to delete messages according to their roles.
 
-How to Test:
+**How to Test:**
+1. Log in with two different users in the same room. Send messages from each account and verify they appear in real-time.
+2. Verify the message grouping and timestamp logic (send multiple messages in a row, then have the other user send one).
+3. As a member, try to delete another user's message. It should fail.
+4. As a member, delete your own message. It should succeed.
+5. Log in as an admin, and try to delete any message in the room. It should succeed.
 
-Log in with two different users in the same room. Send messages from each account and verify they appear in real-time.
+---
 
-Verify the message grouping and timestamp logic (send multiple messages in a row, then have the other user send one).
+### Prompt 4.5: Emoji System Implementation
 
-As a member, try to delete another user's message. It should fail.
+**Prompt to give Claude Code:**
 
-As a member, delete your own message. It should succeed.
+You are an expert full-stack developer continuing to build a messaging platform. Your task is to implement a fully featured emoji system in the message composer and log, including a custom emoji picker and dynamic resizing of emoji-only messages.
 
-Log in as an admin, and try to delete any message in the room. It should succeed.
+Please read the following documents to understand the project's requirements:
 
-Prompt 5: Friends List & Direct Messaging
-Prompt to give Claude Code:
+@/docs/CLAUDE.md
+
+@/docs/WORKFLOW.md
+
+@/docs/ARCHITECTURE.md
+
+@/docs/UIUX.md
+
+Task: Build the Emoji System
+Emoji Picker UI: In the MessageComposer.tsx component, add a button that opens a pop-up emoji picker. The picker should be a clean, user-friendly UI for selecting and inserting emojis into the text composer.
+
+Emoji Message Logic:
+
+The MessageComposer should now insert the selected emoji text into the message.
+
+In the MessageLog.tsx component, implement logic to check if a message consists of only emoji characters.
+
+If a message contains only emojis and is less than 6 characters long, increase the font size of those emojis to 4x their normal size using a Tailwind CSS class.
+
+Final Output: Provide the complete and updated React components, along with any necessary CSS or utility functions. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+
+
+**Expected Outcome:**
+The message composer will now have an emoji picker button. Users can click this button to select and insert emojis into their messages. Emojis will display correctly in the message log, and any message consisting of fewer than 6 emojis and no other text will be displayed in a larger, 4x size.
+
+**How to Test:**
+1. In a chat room, click the new emoji button in the composer. An emoji picker should pop up.
+2. Select one or more emojis and send a message. Verify that the emojis appear correctly in the message log.
+3. Send a message that contains only 1-5 emojis. Verify that these emojis are displayed at a significantly larger size.
+4. Send a message with 6 or more emojis, or a message with a mix of emojis and text. Verify that the emojis are displayed at the normal size.
+
+---
+
+### Prompt 5: Friends List & Direct Messaging
+
+**Prompt to give Claude Code:**
 
 You are an expert full-stack developer continuing to build a messaging platform. Your task is to implement the "Friends" tab, including user search, friend requests, and direct messaging functionality.
 
 Please read the following documents to understand the project's requirements:
-- @/CLAUDE.md
-- @/ARCHITECTURE.md
-- @/UIUX.md
 
-### Task: Build Friends List & Direct Messaging
+@/docs/CLAUDE.md
 
-1.  **Friends Tab UI:** In the `InfoBar`, create the "Friends" tab UI. This should include a search bar, a button to "Add Friend," and a section for a list of friends.
-2.  **Add Friend Search:**
-    * When the "Add Friend" button is clicked, the `ActionWindow` should become a search interface.
-    * Implement a search functionality that queries the `users` Firestore collection for users matching the input (by username or email).
-    * Display the search results with a button to send a friend request.
-3.  **Friend Request Logic:** Implement a system for sending and accepting friend requests. A new collection, `friend_requests`, could be used for this.
-4.  **Direct Messaging Logic:**
-    * When a user clicks on a friend, a new or existing `private_messages` room should open in the `ActionWindow`.
-    * This room should support up to **20 participants** for the MVP.
-    * Use a Firestore subcollection for the messages within this room, similar to the regular chat rooms.
-5.  **Final Output:** Provide the complete and updated React components and Firebase logic. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+@/docs/WORKFLOW.md
 
-Expected Outcome:
+@/docs/ARCHITECTURE.md
+
+@/docs/UIUX.md
+
+Task: Build Friends List & Direct Messaging
+Friends Tab UI: In the InfoBar, create the "Friends" tab UI. This should include a search bar, a button to "Add Friend," and a section for a list of friends.
+
+Add Friend Search:
+
+When the "Add Friend" button is clicked, the ActionWindow should become a search interface.
+
+Implement a search functionality that queries the users Firestore collection for users matching the input (by username or email).
+
+Display the search results with a button to send a friend request.
+
+Friend Request Logic: Implement a system for sending and accepting friend requests. A new collection, friend_requests, could be used for this.
+
+Direct Messaging Logic:
+
+When a user clicks on a friend, a new or existing private_messages room should open in the ActionWindow.
+
+This room should support up to 20 participants for the MVP so there should be a add friend button at the top that opens a modal for adding one or more users from your friends list with a search bar.
+
+Use a Firestore subcollection for the messages within this room, similar to the regular chat rooms.
+
+Final Output: Provide the complete and updated React components and Firebase logic. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+
+
+**Expected Outcome:**
 The "Friends" tab will be fully functional, allowing users to find and send friend requests to others. Once accepted, friends will appear in the list. Users can also engage in direct messages with friends.
 
-How to Test:
+**How to Test:**
+1. Log in with one user, go to the "Friends" tab, click "Add Friend," and search for a second user.
+2. Send a friend request. Log in with the second user and verify they can accept the request.
+3. Verify that both users now appear in each other's friends lists.
+4. Start a DM with the new friend. Send messages and verify they are received in real-time.
 
-Log in with one user, go to the "Friends" tab, click "Add Friend," and search for a second user.
+---
 
-Send a friend request. Log in with the second user and verify they can accept the request.
+## Phase 2: The Social & AI Foundations
 
-Verify that both users now appear in each other's friends lists.
+### Prompt 1: The Right Sidebar & Personal Media Bucket
 
-Start a DM with the new friend. Send messages and verify they are received in real-time.
+**Prompt to give Claude Code:**
 
-Phase 2: Social & AI Agent Integration
-Prompt 1: Advanced Messaging & Link Embedding
-Prompt to give Claude Code:
-
-You are an expert full-stack developer continuing to build a messaging platform. Your task is to upgrade the message composer and log to support rich text, file uploads, and link embedding.
-
-Please read the following documents to understand the project's requirements:
-- @/CLAUDE.md
-- @/ARCHITECTURE.md
-- @/UIUX.md
-
-### Task: Upgrade the Messaging Experience
-
-1.  **Rich Text Editor:** Replace the basic text message composer with a rich text editor. This editor should support bold, italics, underline, strikethrough, quotes, code blocks, bullet points, H1/H2/P sizing, text/highlight colors, and emojis.
-2.  **File Uploads:**
-    * Add a button to the composer to upload files.
-    * Implement the logic to upload image files (up to 2MB) to Firebase Cloud Storage.
-    * Upon successful upload, a new message should be created in Firestore that includes a link to the file.
-3.  **Link Embedding:**
-    * Implement logic to detect links in a message.
-    * If the link is to YouTube or Vimeo, embed a video player in the message log.
-    * For all other links, scrape the metadata (title, description, image) and display it as an embedded card.
-    * Truncate the original URL to the first 50 characters in the message log.
-4.  **Final Output:** Provide the complete and updated React components, along with the Firebase logic for file uploads. The code must be production-ready, fully commented, and styled according to the UI/UX document.
-
-Expected Outcome:
-The message composer will now be a rich text editor. Users can upload images directly to the chat. Links will be automatically embedded as cards or video players, creating a more dynamic chat experience.
-
-How to Test:
-
-In a chat room, use the rich text editor to send a message with bold text, bullet points, and a code block. Verify it is formatted correctly.
-
-Upload an image file from your computer. Verify that the file appears in the chat and is saved in Firebase Cloud Storage.
-
-Paste a link from YouTube and a link from a regular website into the chat. Verify that the YouTube link embeds as a video player and the other link embeds as a card with a preview.
-
-Prompt 2: AI Agent Backend Service
-Prompt to give Claude Code:
-
-You are an expert full-stack developer building the core AI backend for a messaging platform. Your task is to create a secure, scalable, and self-contained Google Cloud Run service that orchestrates AI agents.
+You are an expert full-stack developer beginning Phase 2 of the MVP. Your task is to build the right-hand sidebar and the Personal Media Bucket, which will be the foundation for all future AI and GenAI features.
 
 Please read the following documents to understand the project's requirements:
-- @/CLAUDE.md
-- @/ARCHITECTURE.md
-- @/UIUX.md
 
-### Task: Build the AI Agent Backend Service
+@/docs/CLAUDE.md
 
-1.  **Docker & Python Environment:** Create a `Dockerfile` and `requirements.txt` to set up a Python environment with LangGraph and other necessary dependencies.
-2.  **API Key Management:** Assume the Stability AI API key is stored in Google Cloud Secret Manager. Write the code to securely retrieve this key at runtime.
-3.  **LangGraph Integration:** Implement the core LangGraph logic for a single, generic AI agent. This agent should be able to receive a user's prompt and a list of personality prompts.
-4.  **Backend API:**
-    * Create a simple API endpoint (e.g., `/agent-response`) that accepts a JSON payload containing the user's message, the agent's ID, and the chat context.
-    * This endpoint will use the LangGraph agent to generate a response based on the agent's personality and the chat history.
-    * It will then call the Stability AI API if the prompt is for an image, video or music and return a `200 OK` response with a processing status.
-5.  **Final Output:** Provide the complete and well-commented code for the entire Cloud Run service, including the Dockerfile, the Python application, and instructions for local testing and deployment.
+@/docs/WORKFLOW.md
 
-Expected Outcome:
-A complete Python backend service in a single folder, ready to be deployed to Google Cloud Run. This service will be the brain of our AI agents, capable of receiving requests and generating intelligent responses, as well as initiating generative tasks.
+@/docs/ARCHITECTURE.md
 
-How to Test:
+@/docs/UIUX.md
 
-Set up the local environment and run the service.
+@/docs/AI_IMPLEMENTATION.md
 
-Use a tool like cURL or Postman to send a test JSON payload to the /agent-response endpoint.
+@/docs/TOKENSYSTEM.md
 
-Verify that the service correctly processes the request and returns a valid response.
+Task: Build the Right Sidebar and Personal Media Bucket
+Right Sidebar UI: Create a foldable sidebar on the far right of the screen. This sidebar should "push" the ActionWindow over when it's open, not overlap it. It should be resizable horizontally, similar to the InfoBar.
 
-Prompt 3: AI Agent UI & Interaction
-Prompt to give Claude Code:
+AI Team Section: At the top of the sidebar, create a scrollable section that displays a grid of icons for the user's "hired" AI agents. A user can only have a maximum of 10 AI agents on their team at a time.
 
-You are an expert full-stack developer continuing to build a messaging platform. Your task is to create the front-end for managing AI agents and their interactions in chat rooms.
+Personal Media Bucket: Below the AI Team section, create the Personal Media Bucket. This should be an accordion-style component with sections for each media type: images, audio, and files.
 
-Please read the following documents to understand the project's requirements:
-- @/CLAUDE.md
-- @/ARCHITECTURE.md
-- @/UIUX.md
+Each accordion section should display a list of files that belong to the user.
 
-### Task: Build the AI Agent UI & Interaction
+Implement a drag-and-drop feature so that users can drag files from their computer into this section to upload them to Firebase Cloud Storage.
 
-1.  **Right Sidebar UI:** Create the right-hand sidebar UI, which should be foldable. This sidebar will list the user's created AI agents and have a button to search and add agents from other users.
-2.  **Agent Creation Modal:** Implement a modal for creating a new AI agent. This modal should have a form for the agent's name and a rich text input for a list of personality prompts.
-3.  **@Mention Logic:**
-    * In the `MessageComposer`, implement logic to detect when a user types `@` followed by the name of an AI agent in the chat room.
-    * When an agent is mentioned, a Firebase Cloud Function (in the `/functions` directory) should be triggered.
-    * This Cloud Function's role is to call the API endpoint of our Cloud Run service, passing the message and the agent's context.
-4.  **Final Output:** Provide the complete and updated React components, along with the Firebase Cloud Function code. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+Final Output: Provide the complete and updated React components for the right sidebar and its contents. Ensure the code is production-ready, fully commented, and styled according to the UI/UX document.
 
-Expected Outcome:
-The app will now have a right-hand sidebar for managing AI agents. Users can create agents and, when an agent is mentioned in a chat, a response will be generated by the Cloud Run service and displayed in the chat log.
 
-How to Test:
+**Expected Outcome:**
+A new, foldable sidebar will be available on the right. It will contain an "AI Team" section and a "Personal Media Bucket" with accordion sections for different media types. The drag-and-drop upload functionality will be working for the media bucket.
 
-In a server you own, open the AI agent sidebar and create a new agent with a name and a personality prompt. Verify it appears in your list.
+**How to Test:**
+1. Log in and click the button to open the right sidebar. Verify that it pushes the `ActionWindow` over and that it can be resized.
+2. In the "Personal Media Bucket" section, drag an image file from your computer and drop it into the images accordion. Verify that the file is uploaded to Firebase Cloud Storage and appears in the list.
+3. Verify that the accordion sections for images, audio, and files work correctly.
 
-In a chat room, type @ followed by the agent's name. Verify that the agent generates a response and sends it to the chat.
+---
 
-Open the Firebase Console. A new document should appear in the ai_agents collection with the agent's details.
+### Prompt 2: The Social Feed & Post Creation
 
-Prompt 4: Social Feed & AI Posts
-Prompt to give Claude Code:
+**Prompt to give Claude Code:**
 
-You are an expert full-stack developer continuing to build a messaging platform. Your task is to build the "Social Feed" feature, including the infinite scroll and AI-generated posts.
+You are an expert full-stack developer continuing to build a messaging platform. Your task is to implement the "Social Feed" feature with infinite scrolling and a new post creation UI.
 
 Please read the following documents to understand the project's requirements:
-- @/CLAUDE.md
-- @/ARCHITECTURE.md
-- @/UIUX.md
 
-### Task: Build the Social Feed & AI Posts
+@/docs/CLAUDE.md
 
-1.  **Social Feed UI:** In the `InfoBar`, create the "Social Feed" tab. The `ActionWindow` should display the feed, which should be an infinitely scrollable list of posts. The UI should match the neo-brutalism design.
-2.  **Infinite Scroll Logic:**
-    * Implement the infinite scroll feature using a Firestore query with a `limit` and `startAfter` cursor to fetch posts in chunks.
-    * The frontend should load the next chunk of posts when the user scrolls near the end of the feed.
-3.  **AI-Generated Posts:**
-    * Implement a function that triggers a generative image request to our Cloud Run service.
-    * Upon completion, a new post with the image and an AI-generated caption should be created in the `social_feed` Firestore collection.
-4.  **Post Creation Modal:** Create a simple modal for users to manually create posts, including text and an image.
-5.  **Final Output:** Provide the complete and updated React components, along with any necessary Cloud Functions to trigger the AI-generated posts. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+@/docs/WORKFLOW.md
 
-Expected Outcome:
-The "Social Feed" tab will display an endless scroll of posts. The feed will be populated with both user-created content and AI-generated content.
+@/docs/ARCHITECTURE.md
 
-How to Test:
+@/docs/UIUX.md
 
-Navigate to the "Social Feed" tab. A list of posts should appear.
+@/docs/AI_IMPLEMENTATION.md
 
-Scroll to the bottom of the feed. New posts should automatically load.
+@/docs/TOKENSYSTEM.md
 
-Use the post creation modal to create a new post with text and an image. Verify it appears in the feed.
+Task: Build the Social Feed
+Social Feed UI: In the InfoBar, find the "Social Feed" tab. When selected, the ActionWindow should display the feed, which is a continuously loading list of posts.
 
-Manually trigger the AI post generation function (via a button or test script). A new post with an image and caption should appear.
+Infinite Scroll: Implement the infinite scroll feature using a Firestore query with a limit and startAfter cursor. The feed should initially show a mix of posts from a user's subscribed tags and the most recent posts from those tags.
 
-Phase 3: Collaborative Generative AI
-Prompt 1: Gen AI Backend & Queueing System
-Prompt to give Claude Code:
+Post Composer:
 
-You are an expert full-stack developer continuing to build a messaging platform. Your task is to implement the backend for collaborative generative AI, including a robust queuing and credit system.
+At the top of the scrollable area, create an accordion-style component labeled "Create Post."
 
-Please read the following documents to understand the project's requirements:
-- @/CLAUDE.md
-- @/ARCHITECTURE.md
-- @/UIUX.md
+When unfolded, this component should contain a rich text input area for the post's content.
 
-### Task: Build Gen AI Backend & Queueing System
+It should also have an area for adding tags and buttons to attach media (images, links, etc.).
 
-1.  **Google Cloud Pub/Sub:** Set up a Google Cloud Pub/Sub topic and a subscription.
-2.  **Cloud Run Backend Service:**
-    * Modify the existing Cloud Run service from Phase 2.
-    * The service should subscribe to the Pub/Sub topic and process messages (requests for image, music, or video generation).
-3.  **Universal Credit System:**
-    * Implement a credit system that decrements a user's credit balance in Firestore based on the type of generation request.
-    * The initial pricing is: 2 credits for music (up to 3 minutes), 1 credit for an image.
-    * Implement logic to check if a user has enough credits before processing a request.
-4.  **Stability AI Integration:**
-    * Implement the API calls to the Stability AI APIs for both image and music generation.
-    * Ensure the service handles the asynchronous nature of these API calls, sending a "processing" status and then updating the chat with the final output.
-5.  **Final Output:** Provide the complete and updated code for the Cloud Run service, including a Dockerfile, the Python application, and any necessary Cloud Function triggers to publish messages to the Pub/Sub topic.
+Post Display & Embeds:
 
-Expected Outcome:
-The backend for all generative AI features will be complete. All requests will be queued via Pub/Sub, ensuring no API limits are hit. The credit system will be functional, and the service will generate images and music using the Stability AI APIs.
+Design the UI for a post. Posts should display the author, a timestamp, and the post's content.
 
-How to Test:
+Implement logic to detect links and embed previews for websites and playable video players for YouTube/Vimeo.
 
-Manually publish a message to the Pub/Sub topic with a user ID and a generation prompt.
+Display an uploaded image directly below the text.
 
-Verify that the Cloud Run service processes the message, checks the user's credits, and calls the Stability AI API.
+All tags on a post should be clickable, taking the user to a filtered feed of posts with that tag.
 
-Check the user's Firestore document to ensure their credit balance has been correctly decremented.
+Final Output: Provide the complete and updated React components, along with any necessary Firestore logic for creating and querying posts. The code must be production-ready, fully commented, and styled according to the UI/UX document.
 
-Prompt 2: Gen AI Rooms & Credits
-Prompt to give Claude Code:
 
-You are an expert full-stack developer continuing to build a messaging platform. Your task is to implement the front-end for Gen AI rooms and display the user's credit balance.
+**Expected Outcome:**
+A fully functional social feed with infinite scrolling will be implemented. A user can create a post with text, images, and embedded links. Clicking on a tag will filter the feed, providing a new viewing experience.
+
+**How to Test:**
+1. Navigate to the "Social Feed" tab. A scrollable list of posts should appear.
+2. Scroll to the bottom of the feed. Verify that new posts load automatically.
+3. Use the new post composer to create a post with an image and a link. Verify that the post is created correctly, with the image and a link preview embedded.
+4. Click on a tag in a post. Verify that the feed reloads to show only posts with that tag.
+
+---
+
+### Prompt 3: AI Agent Backend & Front-End Integration
+
+**Prompt to give Claude Code:**
+
+You are an expert full-stack developer building the core AI backend for a messaging platform. Your task is to create a secure, scalable, and self-contained Google Cloud Run service that orchestrates AI agents, and a front-end UI for managing agents.
 
 Please read the following documents to understand the project's requirements:
-- @/CLAUDE.md
-- @/ARCHITECTURE.md
-- @/UIUX.md
 
-### Task: Build Gen AI Rooms & Credits
+@/docs/CLAUDE.md
 
-1.  **Room Type Creation:** In the server settings modal for owners, add an option to create different room types: a regular `chat` room, a `genai-radio` room, or an `ai-agent-design` room. Each type should have a unique icon.
-2.  **Room Limits:** Implement the server limits for room types (max 3 Gen AI and 3 AI agent rooms per server).
-3.  **Gen AI Room UI:** When a `genai-radio` room is selected, the `ActionWindow` should display a dedicated UI for submitting generation prompts. This UI should have options for generating images and music.
-4.  **Credit Display:** In a prominent location (e.g., the user profile pop-up), display the user's current credit balance.
-5.  **Generation Trigger:** When a user submits a prompt, a Firebase Cloud Function (in the `/functions` directory) should be triggered to publish the request to the Google Cloud Pub/Sub topic.
-6.  **Final Output:** Provide the complete and updated React components, along with any necessary Cloud Functions to trigger the Pub/Sub message. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+@/docs/WORKFLOW.md
 
-Expected Outcome:
-Server owners can now create different room types, and the genai-radio rooms will have a dedicated UI for submitting prompts. The user's credit balance will be displayed on the front-end.
+@/docs/ARCHITECTURE.md
 
-How to Test:
+@/docs/UIUX.md
 
-As a server owner, create a new genai-radio room. Verify it has the correct icon and that you can't create more than three.
+@/docs/AI_IMPLEMENTATION.md
 
-In the genai-radio room, verify that the dedicated UI for image and music generation is present.
+@/docs/TOKENSYSTEM.md
 
-Check your user profile pop-up to verify that your credit balance is displayed correctly.
+Task: Build the AI Agent Backend & UI
+Backend Docker & Python Environment: Create a Dockerfile and requirements.txt in a dedicated directory (e.g., /ai-service) to set up a Python environment with LangGraph and other necessary dependencies.
 
-Prompt 3: Gen AI Radio Feature
-Prompt to give Claude Code:
+API Key Management: Assume the Stability AI API key is stored in Google Cloud Secret Manager. Write the code to securely retrieve this key at runtime.
 
-You are an expert full-stack developer completing the final features for the MVP. Your task is to build the "Radio" feature, including generating album art and sharing a playlist to the social feed.
+LangGraph Integration: Implement the core LangGraph logic for a single, generic AI agent. This agent should be able to receive a user's prompt and a list of personality prompts.
+
+Backend API: Create a simple API endpoint (e.g., /agent-response) that accepts a JSON payload containing the user's message, the agent's ID, and the chat context. This endpoint will use the LangGraph agent to generate a response and return it.
+
+Right Sidebar UI for Agents: In the RightSidebar.tsx, create the "AI Team" section. This scrollable area should display a grid of icons for the user's hired AI agents. A user can only have a max of 10 AI agents in their team.
+
+Agent Creation/Editing Modal: Implement a modal for creating a new AI agent with a name, image, and a list of personality prompts. This modal should also handle editing existing agents. The modal should also contain a section for "Gen Rules" that allows for defining rules for generated images.
+
+"Adopt AI" Button: In the AI Chat screen, add a button with the copy "Adopt AI." Clicking this button should add the AI to the user's team in the right sidebar.
+
+@Mention Logic: In the MessageComposer, implement logic to detect when a user types @ followed by the name of an AI agent assigned to that room. When an agent is mentioned, a Firebase Cloud Function should be triggered. This Cloud Function's role is to call the API endpoint of our Cloud Run service, passing the message and the agent's context.
+
+Final Output: Provide all of the necessary, well-commented code, including the Dockerfile, Python application, and React components. The code must be production-ready and styled according to the UI/UX document.
+
+
+**Expected Outcome:**
+The app will have a functional right-hand sidebar for managing AI agents. Users can create, edit, and hire agents. When an agent is mentioned in a chat, a response will be generated by the Cloud Run service and displayed in the chat log.
+
+**How to Test:**
+1. In a server you own, create an "AI Agent Design" room.
+2. In the "Edit" tab, create a new AI agent with a name and personality prompts.
+3. Switch to the "Chat" tab and type `@ai [agent-name]`. Verify that the agent generates a response and sends it to the chat.
+4. Click the "Adopt AI" button and verify the agent appears in your right-hand sidebar.
+5. Edit the agent's personality rules and verify that the agent's responses change.
+
+---
+
+### Prompt 4: AI and GenAI Rooms & UI
+
+**Prompt to give Claude Code:**
+You are an expert full-stack developer continuing to build a messaging platform. Your task is to implement the front-end for AI and GenAI rooms, and the corresponding user roles and settings.
 
 Please read the following documents to understand the project's requirements:
-- @/CLAUDE.md
-- @/ARCHITECTURE.md
-- @/UIUX.md
 
-### Task: Build the Gen AI Radio Feature
+@/docs/CLAUDE.md
 
-1.  **Album Art Generation/Upload:** In the `genai-radio` room UI, after a song is generated, provide an option for the user to either manually upload an album art image (up to 2MB) or generate one using 1 credit.
-2.  **Room Playlist:** Implement the logic to add generated songs to a playlist in the Firestore document of the `genai-radio` room.
-3.  **Social Feed Integration:** Add a button to the `genai-radio` room that allows the user to share the playlist to the social feed.
-4.  **Social Post UI:** The shared post in the social feed should have a dedicated UI. It should display the album art, the song title, and basic playback controls (play, next, prev).
-5.  **Final Output:** Provide the complete and updated React components and Firebase logic to handle the album art, playlist, and social feed post creation. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+@/docs/WORKFLOW.md
 
-Expected Outcome:
-The MVP will be complete. Users can now generate music, add album art, and share it to the social feed as a "radio station" with playback controls. This final feature brings together all of the core concepts of the app.
+@/docs/ARCHITECTURE.md
 
-How to Test:
+@/docs/UIUX.md
 
-In a genai-radio room, generate a song.
+@/docs/AI_IMPLEMENTATION.md
 
-After the song is generated, use the UI to either upload or generate album art.
+@/docs/TOKENSYSTEM.md
 
-Verify the song and album art are added to the room's playlist.
+Task: Build AI and GenAI Rooms
+Room Type Creation & Icons: Update the "Add Room" modal (from the server settings) to include options for creating three room types: a regular chat room, a genai-radio room, or an ai-agent-design room. Each room type should have a unique icon.
 
-Share the playlist to the social feed.
+AI Room UI:
 
-Navigate to the social feed and verify that the shared post displays the album art and has functional playback controls.
+Create a dynamic AIRoom.tsx component that displays two tabs: "Edit" and "Chat."
+
+"Edit" Tab: This tab should contain a scrollable area for personality and gen rules, a chat box for testing the AI, a placeholder for MCP servers, and an area to edit the AI's profile info (image, name, description, model type). It should also include a "Publish" button.
+
+"Chat" Tab: This tab is a real-time messaging window where the AI responds to user messages.
+
+GenAI Room UI:
+
+Create a dynamic GenAIRoom.tsx component with two tabs: "Listen" and "Edit."
+
+"Listen" Tab: This tab should have a fixed play button and a centered image display for the current song's album art.
+
+"Edit" Tab: This tab should have scrollable lists for a "radio playlist" and a "song bucket." It should also include a prompt area for music generation, an area for image generation, and options to upload or generate album art. A "Publish" button will have two options: "Free Play" and "Broadcast."
+
+Room Permissions & Settings: Update the room settings modal to be role-based. Admins and owners should be able to edit the AI's settings, add/remove users, and configure usage.
+
+Final Output: Provide the complete and updated React components for all new room types. Ensure the code is production-ready, fully commented, and styled according to the UI/UX document.
+
+
+**Expected Outcome:**
+The app will have new room types with unique icons. The AI and GenAI rooms will have a functional two-tab UI for editing and using the features.
+
+**How to Test:**
+1. As a server owner, create a new `genai-radio` room and an `ai-agent-design` room. Verify that the correct icons appear.
+2. Navigate to the AI room and verify that the "Edit" and "Chat" tabs are present.
+3. Navigate to the GenAI room and verify that the "Listen" and "Edit" tabs are present.
+
+---
+
+### Prompt 5: Media Controls & GenAI Logic
+
+**Prompt to give Claude Code:**
+You are an expert full-stack developer completing the final features for the MVP. Your task is to implement the universal media controls, the GenAI generation logic, and the "Radio" sharing feature.
+
+Please read the following documents to understand the project's requirements:
+
+@/docs/CLAUDE.md
+
+@/docs/WORKFLOW.md
+
+@/docs/ARCHITECTURE.md
+
+@/docs/UIUX.md
+
+@/docs/AI_IMPLEMENTATION.md
+
+@/docs/TOKENSYSTEM.md
+
+Task: Build Media Controls & GenAI Logic
+Universal Media Controls: Create a fixed MediaControls.tsx component at the bottom of the InfoBar. It should include play/pause/stop, next/prev, a progress bar, and a volume control. The next, prev, and progress bar should be grayed out when listening to a "Broadcast" radio.
+
+GenAI Generation Logic:
+
+In the GenAIRoom.tsx "Edit" tab, implement the logic to call the GenAI backend service when a user submits a prompt for music or images.
+
+Use the universal credit system and the Stability AI API endpoints to handle these requests.
+
+After an audio generation is complete, prompt the user to add an image (either uploaded or generated using a credit).
+
+Playlist Management:
+
+Implement the logic to move songs from the "song bucket" to the "radio playlist."
+
+Implement the logic to share the radio playlist to the social feed as a post.
+
+Social Radio Post UI: Design a dedicated UI for a shared radio post on the social feed. This post should display the album art, the song title, and functional playback controls that use the new MediaControls component.
+
+Final Output: Provide the complete and updated React components and Firebase logic to handle the universal media controls, the GenAI generation flow, and the social radio post feature. The code must be production-ready, fully commented, and styled according to the UI/UX document.
+
+
+**Expected Outcome:**
+The MVP will be complete. All GenAI features will be working, including the credit system and the universal media controls. Users can generate music and images, curate a playlist, and share it to the social feed as a "radio station."
+
+**How to Test:**
+1. In a `genai-radio` room, generate a song and an image. Verify that your credit balance is correctly decremented.
+2. Add the song to the radio playlist.
+3. Click the "Share" button and verify that a new post is created in the social feed with the correct UI and functional playback controls.
+4. Play the radio station and verify that the universal media controls at the bottom of the `InfoBar` are working correctly.
+5. Try to generate a song when you have insufficient credits. Verify that a clear error message is displayed and the request fails.
+</immersive>

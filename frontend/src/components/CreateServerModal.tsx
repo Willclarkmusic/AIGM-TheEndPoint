@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { FiX, FiPlus, FiUsers } from "react-icons/fi";
-import { collection, doc, setDoc, serverTimestamp, query, where, getDocs, limit } from "firebase/firestore";
+import React, { useState, useEffect } from "react";
+import { FiX, FiPlus, FiUsers, FiMail } from "react-icons/fi";
+import { collection, doc, setDoc, serverTimestamp, query, where, getDocs, limit, onSnapshot, deleteDoc, addDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type { User } from "firebase/auth";
 
@@ -11,17 +11,116 @@ interface CreateServerModalProps {
   onServerCreated?: (serverId: string) => void;
 }
 
+interface ServerInvite {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderEmail: string;
+  recipientId: string;
+  serverId: string;
+  serverName: string;
+  createdAt: any;
+  status: "pending";
+}
+
 const CreateServerModal: React.FC<CreateServerModalProps> = ({
   isOpen,
   onClose,
   user,
   onServerCreated,
 }) => {
-  const [activeTab, setActiveTab] = useState<"create" | "join">("create");
+  const [activeTab, setActiveTab] = useState<"create" | "join" | "invites">("create");
   const [serverName, setServerName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [serverInvites, setServerInvites] = useState<ServerInvite[]>([]);
+
+  // Load server invites
+  useEffect(() => {
+    if (!user?.uid || !isOpen) {
+      setServerInvites([]);
+      return;
+    }
+
+    const invitesRef = collection(db, "server_invites");
+    const invitesQuery = query(
+      invitesRef,
+      where("recipientId", "==", user.uid),
+      where("status", "==", "pending")
+    );
+
+    const unsubscribe = onSnapshot(invitesQuery, (snapshot) => {
+      const invitesList: ServerInvite[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        invitesList.push({
+          id: doc.id,
+          senderId: data.senderId,
+          senderName: data.senderName || "Unknown User",
+          senderEmail: data.senderEmail || "",
+          recipientId: data.recipientId,
+          serverId: data.serverId,
+          serverName: data.serverName || "Unknown Server",
+          createdAt: data.createdAt,
+          status: data.status,
+        });
+      });
+      setServerInvites(invitesList);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid, isOpen]);
+
+  // Accept server invite
+  const acceptServerInvite = async (invite: ServerInvite) => {
+    try {
+      setIsLoading(true);
+      setError("");
+
+      // Add user to server members with user UID as document ID
+      const memberRef = doc(db, `servers/${invite.serverId}/members`, user?.uid || "");
+      await setDoc(memberRef, {
+        userId: user?.uid,
+        displayName: user?.displayName || user?.email?.split('@')[0] || "Unknown User",
+        email: user?.email || "",
+        role: "member",
+        joinedAt: serverTimestamp(),
+      });
+
+      // Delete the invite
+      await deleteDoc(doc(db, "server_invites", invite.id));
+
+      console.log(`Successfully joined server ${invite.serverName}`);
+      
+      // Refresh server list to show newly joined server
+      onServerCreated?.(invite.serverId);
+      
+      // Close modal after successful join
+      onClose();
+    } catch (error) {
+      console.error("Error accepting server invite:", error);
+      setError("Failed to accept invite. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Decline server invite
+  const declineServerInvite = async (inviteId: string) => {
+    try {
+      setIsLoading(true);
+      setError("");
+      
+      await deleteDoc(doc(db, "server_invites", inviteId));
+      console.log("Server invite declined");
+    } catch (error) {
+      console.error("Error declining server invite:", error);
+      setError("Failed to decline invite. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Optimized server code generation using timestamp + random
   const generateUniqueServerCode = async (): Promise<string> => {
@@ -239,25 +338,42 @@ const CreateServerModal: React.FC<CreateServerModalProps> = ({
         <div className="flex mb-6">
           <button
             onClick={() => setActiveTab("create")}
-            className={`flex-1 py-3 px-4 font-black text-sm border-2 border-black dark:border-gray-600 transition-all uppercase text-black dark:text-white flex items-center justify-center gap-2 ${
+            className={`flex-1 py-3 px-2 font-black text-xs border-2 border-black dark:border-gray-600 transition-all uppercase text-black dark:text-white flex items-center justify-center gap-1 ${
               activeTab === "create"
                 ? "bg-green-400 dark:bg-green-500 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)]"
                 : "bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600"
             }`}
           >
-            <FiPlus size={16} />
-            Create Server
+            <FiPlus size={14} />
+            Create
           </button>
           <button
             onClick={() => setActiveTab("join")}
-            className={`flex-1 py-3 px-4 font-black text-sm border-2 border-black dark:border-gray-600 border-l-0 transition-all uppercase text-black dark:text-white flex items-center justify-center gap-2 ${
+            className={`flex-1 py-3 px-2 font-black text-xs border-2 border-black dark:border-gray-600 border-l-0 transition-all uppercase text-black dark:text-white flex items-center justify-center gap-1 ${
               activeTab === "join"
                 ? "bg-blue-400 dark:bg-blue-500 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)]"
                 : "bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600"
             }`}
           >
-            <FiUsers size={16} />
-            Join Server
+            <FiUsers size={14} />
+            Join
+          </button>
+          <button
+            onClick={() => setActiveTab("invites")}
+            className={`flex-1 py-3 px-2 font-black text-xs border-2 border-black dark:border-gray-600 border-l-0 transition-all uppercase text-black dark:text-white flex items-center justify-center gap-1 relative ${
+              activeTab === "invites"
+                ? "bg-red-400 dark:bg-red-500 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)]"
+                : "bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600"
+            }`}
+          >
+            <FiMail size={14} />
+            Invites
+            {/* Badge for invite count */}
+            {serverInvites.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 border-2 border-black dark:border-gray-600 rounded-full flex items-center justify-center text-xs font-bold text-white">
+                {serverInvites.length > 9 ? "9+" : serverInvites.length}
+              </span>
+            )}
           </button>
         </div>
 
@@ -319,6 +435,62 @@ const CreateServerModal: React.FC<CreateServerModalProps> = ({
             >
               {isLoading ? "Joining..." : "Join Server"}
             </button>
+          </div>
+        )}
+
+        {/* Server Invites Tab */}
+        {activeTab === "invites" && (
+          <div className="space-y-4">
+            {serverInvites.length > 0 ? (
+              <>
+                <div className="text-sm font-bold text-red-600 dark:text-red-400 mb-3">
+                  {serverInvites.length} pending invite{serverInvites.length !== 1 ? 's' : ''}
+                </div>
+                <div className="space-y-3 max-h-60 overflow-y-auto">
+                  {serverInvites.map((invite) => (
+                    <div
+                      key={invite.id}
+                      className="bg-gray-50 dark:bg-gray-700 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] p-4"
+                    >
+                      <div className="mb-3">
+                        <h3 className="font-black text-lg text-black dark:text-white">
+                          {invite.serverName}
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Invited by <span className="font-bold">{invite.senderName}</span>
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-500">
+                          {invite.createdAt && new Date(invite.createdAt.seconds * 1000).toLocaleDateString()}
+                        </p>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => acceptServerInvite(invite)}
+                          disabled={isLoading}
+                          className="flex-1 px-3 py-2 bg-green-400 dark:bg-green-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-bold text-black dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          onClick={() => declineServerInvite(invite.id)}
+                          disabled={isLoading}
+                          className="flex-1 px-3 py-2 bg-red-400 dark:bg-red-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-8 text-gray-600 dark:text-gray-400">
+                <FiMail size={48} className="mx-auto mb-4 opacity-50" />
+                <p className="font-bold">No pending server invites</p>
+                <p className="text-sm">Server invitations will appear here</p>
+              </div>
+            )}
           </div>
         )}
       </div>

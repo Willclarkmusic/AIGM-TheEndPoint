@@ -18,7 +18,7 @@ The main application screen is a dynamic page composed of three main sections:
 This is a fixed sidebar with a neo-brutalism style. All icons will be a bold, simple design with a thick black drop shadow.
 
 * **Top Icon:** An icon to navigate to the "Home" page, which houses the friends list and social feed.
-* **Server Icons:** A scrollable list of circular icons representing the servers the user has joined. Each icon will have a small, colored dot in the bottom-right corner representing the user's status within that server (Online, Idle, etc.).
+* **Server Icons:** A scrollable list of circular icons representing the servers the user has joined. Each icon will have a small, colored dot in the bottom-right corner representing the user's status within that server (Online, Idle, etc.). A small pop-up with the server's name appears on hover.
 * **Bottom Icons:**
     * **Plus Button:** Opens a modal for either creating a new server or joining an existing one with a 5-digit code.
     * **Settings Icon:** Clicking this reveals a small popup menu with a **Dark/Light Mode** toggle and a **More Settings** button. The "More Settings" button opens a full settings page in the Action Window.
@@ -32,8 +32,18 @@ When a server is created, a default room named `#General` is automatically creat
 This sidebar is horizontally resizable with a click-and-drag handle. Its content is context-aware.
 
 * **When a Server is Selected:**
-    * **Title:** Displays the server name with a "Server Settings" button.
-    * **Server Settings:** The settings page that opens will be role-based. An owner can manage rooms and server roles, while a regular member can only see and join rooms. A server can have a maximum of **3 owners**.
+    * **Title:** The top of the `InfoBar` will simply display the server's name. A settings icon button will be aligned right, and clicking it will open the `ServerSettings.tsx` component in the `ActionWindow`.
+    * **Server Settings (Role-Based View):** This component will have different views based on the user's role.
+        * **Owner View:**
+            * A top section with editable server info (name, icon, color).
+            * A `Rooms` section with a scrollable list of all rooms. Each room has rename and settings buttons. A button to "Add Room" is at the top of the list.
+            * A `Members` section with a scrollable list of all users, a search bar, and an edit button next to each user to manage their role or kick them.
+            * A `Delete Server` button at the very bottom.
+        * **Admin View:** Similar to the owner's view, but server info is read-only, and the "Delete Server" button is absent.
+        * **Member View:**
+            * Server info is read-only.
+            * In the `Rooms` list, each room has a toggle to show/hide it from the `InfoBar`.
+            * In the `Members` list, each user has an "Add Friend" button instead of an "Edit" button.
     * **Room List:** Below the title, a foldable list of rooms, identified by unique icons for each room type (`chat`, `genai`, `ai-agent`). Only rooms a user has joined are visible, unless they are the owner. Servers will have a limit of **3 Gen AI rooms** and **3 AI agent design rooms** for the MVP.
 * **When "Home" is Selected:**
     * Two tabs are available at the top: **Friends** and **Social Feed**.
@@ -54,9 +64,9 @@ This sidebar is horizontally resizable with a click-and-drag handle. Its content
 
 ## 5. Right Sidebar
 
-A final, foldable sidebar on the far right will be added to house AI agent features and context-aware content. The toggle button for this sidebar will be located in the top bar of the Action Window.
+A final, foldable sidebar on the far right will be added to house AI agent features and context-aware content. The toggle button for this sidebar will be located in the top bar of the Action Window. When opened, it will push the `ActionWindow` over.
 
-* **AI Agent Management:** This sidebar will display the agents you have created in your own servers and allow you to add agents from other users via a search system. Within this section, a dedicated **AI Settings** room will allow the creator to name the agent and define its personality by adding a list of prompts.
+* **AI Agent Management:** This sidebar will display the agents you have "hired" from servers you are a member of, allowing you to `Recruit` (Adopt) them to your team of AI agents. A user can only have up to 10 AI agents in their team at a time. The sidebar will also have a media bucket that contains all your personal media.
 
 ## 6. Action Window (Middle Area)
 
@@ -95,19 +105,3 @@ The entire UI will be designed with a neo-brutalism aesthetic:
 * **Geometry:** Squared, sharp corners on all elements.
 * **Shadows:** Thick, prominent black drop shadows on all buttons, cards, and UI elements to give a 3D, "bouncy" effect.
 * **Spacing:** Ample whitespace around elements to emphasize the shadows and visual weight.
-
-## 9. Iconography Guidelines
-
-* **Icon Library:** All icons in the application should use **React Icons** (react-icons) for consistency and performance.
-* **Icon Style:** Choose bold, simple icons that match the neo-brutalism aesthetic. Prefer filled icons over outlined ones.
-* **Icon Sizing:** Standard icon sizes should be:
-  * Small buttons/inputs: 16-18px
-  * Regular buttons: 20-22px
-  * Large buttons/headers: 24-28px
-* **Icon Colors:** Icons should contrast with their background. Use black icons on light backgrounds and white icons on dark backgrounds.
-* **Icon Placement:** Icons should be placed to the left of text in buttons and navigation items, with consistent spacing (gap-2 in Tailwind).
-* **Common Icons:**
-  * Authentication: FiLogIn (login), FiUserPlus (signup)
-  * Social Providers: FaGoogle (Google), FaGithub (GitHub), FaDiscord (Discord)
-  * Navigation: FiHome (home), FiSettings (settings), FiPlus (add/create)
-  * Actions: FiSend (send message), FiTrash2 (delete), FiEdit3 (edit)

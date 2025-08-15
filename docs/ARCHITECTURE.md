@@ -8,7 +8,7 @@ The application will follow a **microservices-oriented architecture** using Goog
 
 ## 2. Technology Stack
 
-* **Frontend:** **React** with **Tailwind CSS** and **React Icons**. This stack is ideal for building a modern, responsive, and component-based user interface with consistent iconography.
+* **Frontend:** **React** with **Tailwind CSS**. This stack is ideal for building a modern, responsive, and component-based user interface.
 
 * **Database:** **Cloud Firestore** will serve as the primary NoSQL database. Its real-time capabilities are essential for live chat, user presence, and real-time updates in generative AI rooms.
 
@@ -41,45 +41,39 @@ The application will follow a **microservices-oriented architecture** using Goog
 ### b. AI Agent Implementation
 
 * **AI Agent Definition:** A new Firestore collection, `ai_agents`, will store the unique ID, name, and a list of personality prompts for each agent. These prompts define the agent's behavior and personality.
-
+* **AI Room Types:** There will be a dedicated `ai-agent-design` room type where owners and admins can edit an AI's personality, and members can "hire" a public agent.
 * **Interaction:** A user `@mentions` an AI agent in a chat room. This triggers a **Firebase Cloud Function** that calls our **custom AI Agent Service** hosted on Google Cloud Run. The function passes the agent's personality and the chat context from Firestore.
-
 * **AI Agent Service (Cloud Run):** This service, powered by LangGraph and a large language model, processes the input, generates a response based on the agent's personality, and writes it back to the chat room's message subcollection in Firestore.
+* **Rate Limiting:** A rate limit of **5 @ai mentions per minute** per user will be implemented to prevent abuse. Excess messages will be queued for later processing.
 
 ### c. Generative AI Rooms
 
 * **Triggering Generation:** A user in a Gen AI room submits a prompt. This request is published to a **Google Cloud Pub/Sub** queue. All users are given **10 free credits per month** for generative tasks.
-
 * **Backend Service:** A dedicated Cloud Run service subscribes to the Pub/Sub topic and processes requests one at a time, implementing a robust queueing system. It calls the Stability AI API and manages credit usage.
-
 * **Credit System:** A universal credit system will be implemented for all paid features, with initial pricing for the MVP set at:
     * Music (up to 3 mins): 2 credits.
     * Photos: 1 credit.
     * Album art for music: 1 credit (or can be manually uploaded for free).
-
 * **Asynchronous Process:** The Gen AI service calls the Stability AI API and immediately returns a "processing" status to the Cloud Function, which updates the Firestore room.
-
 * **Completion & Storage:** When the Stability AI API call is complete, our Generative AI service receives the generated media URL. It then saves this media to **Cloud Storage** and writes a new message to the Firestore room with a link to the generated content.
+* **Room Types:** We will have `genai-radio` and `human-radio` rooms, each with a `Listen` and `Edit` tab for creating and playing playlists.
 
 ### d. Social Feed
 
 * **Post Storage:** A simple Firestore collection, `social_feed`, will store each post as a document.
-
 * **AI-Generated Posts:** An AI agent, either on a timed schedule (e.g., via a cron job) or on a user's command, can call a **Cloud Function** that triggers an image generation via the Gen AI service. The generated image and an accompanying caption are then posted to the `social_feed` collection.
-
 * **Infinite Scroll:** The frontend will use a Firestore query with a `limit` and `startAfter` cursor to fetch posts in chunks, enabling infinite scrolling without a performance hit.
+* **Trending:** For the MVP, "trending" will be a simple feed of the most recent posts.
 
 ## 4. Initial Firestore Data Schema (High-Level)
 
 * `users`: `{ userId: string, name: string, lastSeen: timestamp, status: string, credits: number, ... }`
-
 * `servers`: `{ serverId: string, name: string, ownerIds: array, ... }`
     * `members` (subcollection): `{ userId: string, role: string, ... }`
     * `chat_rooms` (subcollection): `{ roomId: string, name: string, type: string, playlist: array, ... }`
         * `messages` (subcollection): `{ messageId: string, text: string, senderId: string, timestamp: timestamp, replyTo: string, ... }`
     * `private_messages` (subcollection): `{ pmId: string, participants: array, ... }`
         * `messages` (subcollection): `{ messageId: string, text: string, senderId: string, timestamp: timestamp, ... }`
-
-* `ai_agents`: `{ agentId: string, name: string, personalityPrompts: array, ... }`
-
+* `ai_agents`: `{ agentId: string, name: string, personalityPrompts: array, isPublic: boolean, ... }`
 * `social_feed`: `{ postId: string, author: string, content: string, mediaUrl: string, timestamp: timestamp, ... }`
+* `friend_requests`: `{ requestId: string, from: string, to: string, status: string }`

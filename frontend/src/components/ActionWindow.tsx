@@ -1,6 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import type { User } from "firebase/auth";
-import { FiSidebar, FiArrowLeft } from "react-icons/fi";
+import { FiSidebar, FiArrowLeft, FiUserPlus, FiX, FiSearch } from "react-icons/fi";
+import { collection, query, where, getDocs, doc, updateDoc, arrayUnion, setDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../firebase/config";
 import ServerSettings from "./ServerSettings";
 import ChatRoom from "./ChatRoom";
 import FriendSearch from "./FriendSearch";
@@ -15,11 +17,14 @@ interface ActionWindowProps {
     id: string;
     name: string;
     role: "owner" | "admin" | "member" | null;
+    memberCount?: number;
   } | null;
   selectedRoom?: {
     id: string;
     name: string;
     serverId: string;
+    type?: string;
+    memberCount?: number;
   } | null;
   onBackFromServerSettings?: () => void;
   onServerDeleted?: () => void;
@@ -31,6 +36,7 @@ interface ActionWindowProps {
   } | null;
   onBackFromFriendSearch?: () => void;
   onBackFromDM?: () => void;
+  userRole?: "owner" | "admin" | "member" | null;
 }
 
 const ActionWindow: React.FC<ActionWindowProps> = ({
@@ -46,7 +52,130 @@ const ActionWindow: React.FC<ActionWindowProps> = ({
   selectedDM,
   onBackFromFriendSearch,
   onBackFromDM,
+  userRole,
 }) => {
+  const [showAddUsersModal, setShowAddUsersModal] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+
+  // Search for users to add to DM
+  const searchUsers = async (searchTerm: string) => {
+    if (!searchTerm.trim() || searchTerm.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      // Search by email or display name
+      const usersRef = collection(db, "users");
+      
+      // Search by email
+      const emailQuery = query(
+        usersRef,
+        where("email", ">=", searchTerm.toLowerCase()),
+        where("email", "<=", searchTerm.toLowerCase() + '\uf8ff')
+      );
+      
+      // Search by display name
+      const nameQuery = query(
+        usersRef,
+        where("displayName", ">=", searchTerm),
+        where("displayName", "<=", searchTerm + '\uf8ff')
+      );
+
+      const [emailSnapshot, nameSnapshot] = await Promise.all([
+        getDocs(emailQuery),
+        getDocs(nameQuery)
+      ]);
+
+      // Combine results and remove duplicates
+      const userMap = new Map();
+      
+      emailSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.userId !== user.uid && !selectedDM?.participants.includes(data.userId)) {
+          userMap.set(data.userId, {
+            id: doc.id,
+            userId: data.userId,
+            displayName: data.displayName || data.email?.split('@')[0] || 'Unknown User',
+            email: data.email || '',
+          });
+        }
+      });
+
+      nameSnapshot.docs.forEach(doc => {
+        const data = doc.data();
+        if (data.userId !== user.uid && !selectedDM?.participants.includes(data.userId) && !userMap.has(data.userId)) {
+          userMap.set(data.userId, {
+            id: doc.id,
+            userId: data.userId,
+            displayName: data.displayName || data.email?.split('@')[0] || 'Unknown User',
+            email: data.email || '',
+          });
+        }
+      });
+
+      setSearchResults(Array.from(userMap.values()));
+    } catch (error) {
+      console.error("Error searching users:", error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Add selected users to DM
+  const addUsersToDM = async () => {
+    if (!selectedDM || selectedUsers.length === 0) return;
+
+    try {
+      const currentParticipantCount = selectedDM.participants.length;
+      
+      if (currentParticipantCount === 2) {
+        // Create new group DM (leave 2-person DM intact)
+        console.log("Creating new group DM for 2-person chat");
+        
+        const newParticipants = [...selectedDM.participants, ...selectedUsers];
+        const newDMRef = doc(collection(db, "private_messages"));
+        
+        await setDoc(newDMRef, {
+          participants: newParticipants,
+          createdAt: serverTimestamp(),
+          lastMessage: "",
+          lastMessageTimestamp: serverTimestamp(),
+        });
+        
+        console.log("New group DM created with ID:", newDMRef.id);
+        
+        // TODO: Navigate to the new group DM
+        // The InfoBar will automatically pick up the new DM via real-time listener
+        
+      } else {
+        // Add users directly to existing 3+ person DM
+        console.log("Adding users to existing group DM");
+        
+        const dmRef = doc(db, "private_messages", selectedDM.id);
+        await updateDoc(dmRef, {
+          participants: arrayUnion(...selectedUsers)
+        });
+      }
+
+      // Close modal and reset state
+      setShowAddUsersModal(false);
+      setSearchTerm("");
+      setSearchResults([]);
+      setSelectedUsers([]);
+      
+      console.log("Users added to DM successfully");
+    } catch (error) {
+      console.error("Error adding users to DM:", error);
+      alert("Failed to add users to conversation. Please try again.");
+    }
+  };
+
   const getTitle = () => {
     if (showServerSettings && selectedServerData) {
       return "Server Settings";
@@ -64,6 +193,55 @@ const ActionWindow: React.FC<ActionWindowProps> = ({
       return `Server ${selectedServer}`;
     }
     return selectedTab === "friends" ? "Friends" : "Social Feed";
+  };
+
+  const getSecondaryText = () => {
+    if (showServerSettings && selectedServerData) {
+      const memberText = selectedServerData.memberCount 
+        ? `${selectedServerData.memberCount} member${selectedServerData.memberCount !== 1 ? 's' : ''}` 
+        : '';
+      const roleText = selectedServerData.role ? `You are ${selectedServerData.role}` : '';
+      if (memberText && roleText) {
+        return `${memberText} • ${roleText}`;
+      }
+      return memberText || roleText;
+    }
+    if (selectedDM) {
+      const participantCount = selectedDM.participants.length;
+      return `${participantCount} participant${participantCount !== 1 ? 's' : ''}`;
+    }
+    if (selectedRoom && selectedServerData) {
+      const memberText = selectedRoom.memberCount 
+        ? `${selectedRoom.memberCount} member${selectedRoom.memberCount !== 1 ? 's' : ''}` 
+        : '';
+      const roleText = userRole ? `You are ${userRole}` : '';
+      const roomType = selectedRoom.type ? `${selectedRoom.type.charAt(0).toUpperCase() + selectedRoom.type.slice(1)} room` : '';
+      
+      const parts = [roomType, memberText, roleText].filter(Boolean);
+      return parts.join(' • ');
+    }
+    return ''; // Return empty string for other cases
+  };
+
+  const getToolbarButtons = () => {
+    // For DMs, show Add Users button if not at max capacity (10 users)
+    if (selectedDM) {
+      const canAddUsers = selectedDM.participants.length < 10;
+      if (canAddUsers) {
+        return (
+          <button
+            onClick={() => setShowAddUsersModal(true)}
+            className="px-3 py-2 bg-green-400 dark:bg-green-500 border-2 border-black dark:border-gray-500 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-bold text-black dark:text-white flex items-center gap-2"
+          >
+            <FiUserPlus size={16} />
+            Add Users
+          </button>
+        );
+      }
+    }
+
+    // Return null for other content types (no toolbar buttons)
+    return null;
   };
 
   const getContent = () => {
@@ -209,11 +387,23 @@ const ActionWindow: React.FC<ActionWindowProps> = ({
               <FiArrowLeft size={18} className="text-white" />
             </button>
           )}
-          <h1 className="text-xl font-black uppercase">{getTitle()}</h1>
+          <div className="flex flex-col">
+            <h1 className="text-xl font-black uppercase leading-tight">{getTitle()}</h1>
+            {getSecondaryText() && (
+              <p className="text-sm text-gray-300 dark:text-gray-400 leading-tight mt-1">
+                {getSecondaryText()}
+              </p>
+            )}
+          </div>
         </div>
-        <button className="w-10 h-10 bg-gray-600 dark:bg-gray-700 border-2 border-black dark:border-gray-500 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center">
-          <FiSidebar size={18} className="text-white" />
-        </button>
+        
+        {/* Adaptable Toolbar Area */}
+        <div className="flex items-center gap-3">
+          {getToolbarButtons()}
+          <button className="w-10 h-10 bg-gray-600 dark:bg-gray-700 border-2 border-black dark:border-gray-500 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center">
+            <FiSidebar size={18} className="text-white" />
+          </button>
+        </div>
       </div>
 
       {/* Main Content */}
@@ -228,6 +418,138 @@ const ActionWindow: React.FC<ActionWindowProps> = ({
             Welcome back, <span className="font-bold text-black dark:text-white">{user.email}</span>! 
             Select a server or explore your friends and social feed.
           </p>
+        </div>
+      )}
+
+      {/* Add Users to DM Modal */}
+      {showAddUsersModal && selectedDM && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(55,65,81,1)] max-w-md w-full">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b-2 border-black dark:border-gray-600">
+              <h3 className="text-xl font-black uppercase text-black dark:text-white">
+                Add Users to {selectedDM.name}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowAddUsersModal(false);
+                  setSearchTerm("");
+                  setSearchResults([]);
+                  setSelectedUsers([]);
+                }}
+                className="w-8 h-8 bg-red-400 dark:bg-red-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+              >
+                <FiX size={16} className="text-black dark:text-white" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6">
+              {/* Search Bar */}
+              <div className="relative mb-4">
+                <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" size={20} />
+                <input
+                  type="text"
+                  placeholder="Search users by name or email..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    const timeoutId = setTimeout(() => searchUsers(e.target.value), 300);
+                    return () => clearTimeout(timeoutId);
+                  }}
+                  className="w-full pl-10 pr-4 py-3 border-2 border-black dark:border-gray-600 bg-white dark:bg-gray-700 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:focus:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] transition-all"
+                />
+              </div>
+
+              {/* Search Results */}
+              <div className="mb-4">
+                {isSearching && (
+                  <div className="text-center py-4 text-gray-600 dark:text-gray-400">
+                    Searching users...
+                  </div>
+                )}
+
+                {!isSearching && searchTerm && searchResults.length === 0 && (
+                  <div className="text-center py-4 text-gray-600 dark:text-gray-400">
+                    No users found matching "{searchTerm}"
+                  </div>
+                )}
+
+                {searchResults.length > 0 && (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {searchResults.map((searchUser) => (
+                      <div
+                        key={searchUser.userId}
+                        className={`flex items-center justify-between p-3 border-2 transition-all cursor-pointer ${
+                          selectedUsers.includes(searchUser.userId)
+                            ? "bg-green-100 dark:bg-green-900 border-green-500"
+                            : "bg-gray-50 dark:bg-gray-700 border-black dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600"
+                        }`}
+                        onClick={() => {
+                          if (selectedUsers.includes(searchUser.userId)) {
+                            setSelectedUsers(selectedUsers.filter(id => id !== searchUser.userId));
+                          } else {
+                            if (selectedUsers.length + selectedDM.participants.length < 10) {
+                              setSelectedUsers([...selectedUsers, searchUser.userId]);
+                            }
+                          }
+                        }}
+                      >
+                        <div>
+                          <p className="font-bold text-black dark:text-white">
+                            {searchUser.displayName}
+                          </p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {searchUser.email}
+                          </p>
+                        </div>
+                        {selectedUsers.includes(searchUser.userId) && (
+                          <div className="text-green-600 dark:text-green-400 font-bold">
+                            ✓ Selected
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Current Participants Info */}
+              <div className="mb-4 p-3 bg-gray-100 dark:bg-gray-700 border-2 border-black dark:border-gray-600">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Current participants: {selectedDM.participants.length}/10
+                </p>
+                {selectedUsers.length > 0 && (
+                  <p className="text-sm text-green-600 dark:text-green-400 mt-1">
+                    Adding {selectedUsers.length} user{selectedUsers.length !== 1 ? 's' : ''} 
+                    (New total: {selectedDM.participants.length + selectedUsers.length}/10)
+                  </p>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={addUsersToDM}
+                  disabled={selectedUsers.length === 0}
+                  className="flex-1 px-4 py-3 bg-green-400 dark:bg-green-500 border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-bold text-black dark:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Add {selectedUsers.length} User{selectedUsers.length !== 1 ? 's' : ''}
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAddUsersModal(false);
+                    setSearchTerm("");
+                    setSearchResults([]);
+                    setSelectedUsers([]);
+                  }}
+                  className="px-4 py-3 bg-gray-400 dark:bg-gray-500 border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-bold text-black dark:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

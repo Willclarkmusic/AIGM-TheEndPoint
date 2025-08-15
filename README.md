@@ -242,8 +242,8 @@ We welcome contributions! Please see our [contributing guidelines](CONTRIBUTING.
 - [x] Mobile-responsive design
 
 ### Phase 2: AI Integration 🚧
-- [x] AI agent framework
-- [x] Personality system
+- [ ] AI agent framework
+- [ ] Personality system
 - [ ] Agent marketplace
 - [ ] Advanced AI conversations
 
@@ -311,6 +311,6 @@ We use privacy-focused analytics to improve the platform:
 
 **Built with ❤️ by the AIGM Team**
 
-[⭐ Star this repo](https://github.com/your-username/aigm-messaging-platform) • [🐛 Report Bug](https://github.com/your-username/aigm-messaging-platform/issues) • [💡 Request Feature](https://github.com/your-username/aigm-messaging-platform/discussions)
+[💡 Request Feature](https://github.com/your-username/aigm-messaging-platform/discussions)
 
 </div>

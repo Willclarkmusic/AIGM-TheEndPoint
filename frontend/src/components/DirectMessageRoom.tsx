@@ -455,28 +455,7 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
 
   return (
     <div className="flex-1 bg-white dark:bg-gray-900 flex flex-col h-full">
-      {/* Header */}
-      <div className="bg-purple-400 dark:bg-purple-500 px-6 py-4 border-b-4 border-black dark:border-gray-600 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-black uppercase text-black dark:text-white">
-            {roomName}
-          </h1>
-          <p className="text-sm text-black dark:text-white">
-            {participantInfo.length} participant{participantInfo.length !== 1 ? 's' : ''}
-          </p>
-        </div>
-        {participants.length < 20 && friends.length > 0 && (
-          <button
-            onClick={() => setShowAddFriend(true)}
-            className="px-3 py-2 bg-green-400 dark:bg-green-500 border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-bold text-black dark:text-white flex items-center gap-2"
-          >
-            <FiUserPlus size={16} />
-            Add Friend
-          </button>
-        )}
-      </div>
-
-      {/* Messages */}
+      {/* Messages - Takes full space */}
       <div className="flex-1 flex flex-col min-h-0">
         <div 
           ref={messagesContainerRef}
@@ -485,6 +464,19 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
         >
           <div className="min-h-full flex flex-col">
             <div className="flex-1"></div>
+            
+            {/* Add Friend Button - Now in messages area */}
+            {participants.length < 20 && friends.length > 0 && (
+              <div className="mb-4 text-center">
+                <button
+                  onClick={() => setShowAddFriend(true)}
+                  className="px-3 py-2 bg-green-400 dark:bg-green-500 border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-bold text-black dark:text-white flex items-center gap-2 mx-auto"
+                >
+                  <FiUserPlus size={16} />
+                  Add Friend to Chat
+                </button>
+              </div>
+            )}
             
             <div className="space-y-1 flex-shrink-0">
               {messages.length === 0 ? (

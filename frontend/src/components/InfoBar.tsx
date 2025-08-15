@@ -7,7 +7,7 @@ import {
   FiSettings,
 } from "react-icons/fi";
 import { FaHashtag, FaRobot, FaImage } from "react-icons/fa";
-import { collection, onSnapshot, query, orderBy, where, getDocs, limit } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, where, getDocs, limit, doc, deleteDoc, addDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type { User } from "firebase/auth";
 import { testFirestoreConnection, getPerformanceDiagnostics } from "../utils/performanceUtils";
@@ -17,8 +17,8 @@ interface InfoBarProps {
   selectedServer: string | null;
   selectedServerName?: string;
   selectedRoom?: string | null;
-  selectedTab: "friends" | "feed";
-  onTabChange: (tab: "friends" | "feed") => void;
+  selectedTab: "friends" | "feed" | "invites";
+  onTabChange: (tab: "friends" | "feed" | "invites") => void;
   onContentItemClick?: () => void;
   onRoomSelect?: (roomId: string, roomName: string, serverId: string) => void;
   isMobile?: boolean;
@@ -43,6 +43,18 @@ interface RecentDM {
   participants: string[];
   lastMessage?: string;
   lastMessageTimestamp?: any;
+}
+
+interface ServerInvite {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderEmail: string;
+  recipientId: string;
+  serverId: string;
+  serverName: string;
+  createdAt: any;
+  status: "pending";
 }
 
 const InfoBar: React.FC<InfoBarProps> = React.memo(({
@@ -75,6 +87,7 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
       id: string;
       name: string;
       type: "chat" | "genai" | "ai-agent";
+      icon?: string;
     }>
   >([]);
   
@@ -91,6 +104,114 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
   });
   
   const [friendRequestCount, setFriendRequestCount] = useState(0);
+  const [serverInvites, setServerInvites] = useState<ServerInvite[]>([]);
+  const [recentDMs, setRecentDMs] = useState<RecentDM[]>([]);
+  const [dmLoadLimit, setDmLoadLimit] = useState(10);
+  const [hasMoreDMs, setHasMoreDMs] = useState(false);
+
+  // Load recent DMs with real-time updates
+  useEffect(() => {
+    if (!user?.uid) {
+      setRecentDMs([]);
+      setHasMoreDMs(false);
+      return;
+    }
+
+    const dmQuery = query(
+      collection(db, "private_messages"),
+      where("participants", "array-contains", user.uid),
+      orderBy("lastMessageTimestamp", "desc"),
+      limit(dmLoadLimit)
+    );
+
+    const unsubscribe = onSnapshot(dmQuery, async (snapshot) => {
+      try {
+        const dmsList: RecentDM[] = [];
+        
+        // Get all user data for participants (we'll need this for naming)
+        const allParticipantIds = new Set<string>();
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          data.participants?.forEach((id: string) => allParticipantIds.add(id));
+        });
+        
+        // Fetch user data for all participants
+        const userDataMap = new Map<string, any>();
+        if (allParticipantIds.size > 0) {
+          const userQueries = Array.from(allParticipantIds).map(async (userId) => {
+            try {
+              const userQuery = query(
+                collection(db, "users"),
+                where("userId", "==", userId),
+                limit(1)
+              );
+              const userSnapshot = await getDocs(userQuery);
+              if (!userSnapshot.empty) {
+                const userData = userSnapshot.docs[0].data();
+                userDataMap.set(userId, userData);
+              }
+            } catch (error) {
+              console.error("Error fetching user data for", userId, error);
+            }
+          });
+          await Promise.all(userQueries);
+        }
+
+        snapshot.docs.forEach((doc) => {
+          const dmData = doc.data();
+          const otherParticipants = dmData.participants?.filter((p: string) => p !== user.uid) || [];
+
+          if (otherParticipants.length > 0) {
+            // Generate DM name based on participants
+            let dmName = "";
+            if (otherParticipants.length === 1) {
+              // 1-on-1 DM - use the other person's name
+              const otherUser = userDataMap.get(otherParticipants[0]);
+              dmName = otherUser?.displayName || otherUser?.email?.split('@')[0] || "Unknown User";
+            } else {
+              // Group DM - show participant count or create group name
+              dmName = `Group (${dmData.participants.length} members)`;
+            }
+
+            dmsList.push({
+              id: doc.id,
+              name: dmName,
+              participants: dmData.participants || [],
+              lastMessage: dmData.lastMessage || "",
+              lastMessageTimestamp: dmData.lastMessageTimestamp,
+            });
+          }
+        });
+
+        setRecentDMs(dmsList);
+        
+        // Check if there are more DMs by trying to load one more
+        if (dmsList.length === dmLoadLimit) {
+          const checkMoreQuery = query(
+            collection(db, "private_messages"),
+            where("participants", "array-contains", user.uid),
+            orderBy("lastMessageTimestamp", "desc"),
+            limit(dmLoadLimit + 1)
+          );
+          const checkSnapshot = await getDocs(checkMoreQuery);
+          setHasMoreDMs(checkSnapshot.docs.length > dmLoadLimit);
+        } else {
+          setHasMoreDMs(false);
+        }
+      } catch (error) {
+        console.error("Error loading DMs:", error);
+        setRecentDMs([]);
+        setHasMoreDMs(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid, dmLoadLimit]);
+
+  // Load more DMs function
+  const loadMoreDMs = () => {
+    setDmLoadLimit(prev => prev + 10);
+  };
 
   // Load rooms when server is selected
   useEffect(() => {
@@ -109,6 +230,7 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
           id: doc.id,
           name: doc.data().name || "Unnamed Room",
           type: doc.data().type || "chat",
+          icon: doc.data().icon,
         }));
         setRooms(roomsList);
       },
@@ -163,48 +285,11 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
 
           // Categorize friends by status
           const categorizedFriends = {
-            recent: [] as RecentDM[],
+            recent: [] as RecentDM[], // This will be populated by the separate DM listener
             online: friendsData.filter(f => f.status === "online"),
             idle: friendsData.filter(f => f.status === "idle"),
             away: friendsData.filter(f => f.status === "away"),
           };
-
-          // Load recent DMs
-          try {
-            const dmQuery = query(
-              collection(db, "private_messages"),
-              where("participants", "array-contains", user.uid),
-              orderBy("lastMessageTimestamp", "desc"),
-              limit(5)
-            );
-
-            const dmDocs = await getDocs(dmQuery);
-            const recentDMs: RecentDM[] = [];
-
-            dmDocs.forEach((doc) => {
-              const dmData = doc.data();
-              const otherParticipants = dmData.participants.filter((p: string) => p !== user.uid);
-
-              if (otherParticipants.length > 0) {
-                const friendData = friendsData.find(f => f.id === otherParticipants[0]);
-                const dmName = otherParticipants.length === 1
-                  ? (friendData?.name || "Unknown User")
-                  : `Group (${otherParticipants.length + 1})`;
-
-                recentDMs.push({
-                  id: doc.id,
-                  name: dmName,
-                  participants: dmData.participants,
-                  lastMessage: dmData.lastMessage,
-                  lastMessageTimestamp: dmData.lastMessageTimestamp,
-                });
-              }
-            });
-
-            categorizedFriends.recent = recentDMs;
-          } catch (dmError) {
-            console.log("No DMs found or DM query failed:", dmError);
-          }
 
           setFriends(categorizedFriends);
 
@@ -247,6 +332,77 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
 
     return () => unsubscribe();
   }, [user?.uid]);
+
+  // Load server invites
+  useEffect(() => {
+    if (!user?.uid) {
+      setServerInvites([]);
+      return;
+    }
+
+    const invitesRef = collection(db, "server_invites");
+    const invitesQuery = query(
+      invitesRef,
+      where("recipientId", "==", user.uid),
+      where("status", "==", "pending"),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(invitesQuery, (snapshot) => {
+      const invitesList: ServerInvite[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        invitesList.push({
+          id: doc.id,
+          senderId: data.senderId,
+          senderName: data.senderName || "Unknown User",
+          senderEmail: data.senderEmail || "",
+          recipientId: data.recipientId,
+          serverId: data.serverId,
+          serverName: data.serverName || "Unknown Server",
+          createdAt: data.createdAt,
+          status: data.status,
+        });
+      });
+      setServerInvites(invitesList);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
+
+  // Accept server invite
+  const acceptServerInvite = async (invite: ServerInvite) => {
+    try {
+      // Add user to server members with user UID as document ID
+      const memberRef = doc(db, `servers/${invite.serverId}/members`, user?.uid || "");
+      await setDoc(memberRef, {
+        userId: user?.uid,
+        displayName: user?.displayName || user?.email?.split('@')[0] || "Unknown User",
+        email: user?.email || "",
+        role: "member",
+        joinedAt: serverTimestamp(),
+      });
+
+      // Delete the invite
+      await deleteDoc(doc(db, "server_invites", invite.id));
+
+      console.log(`Successfully joined server ${invite.serverName}`);
+    } catch (error) {
+      console.error("Error accepting server invite:", error);
+      alert("Failed to accept invite. Please try again.");
+    }
+  };
+
+  // Decline server invite
+  const declineServerInvite = async (inviteId: string) => {
+    try {
+      await deleteDoc(doc(db, "server_invites", inviteId));
+      console.log("Server invite declined");
+    } catch (error) {
+      console.error("Error declining server invite:", error);
+      alert("Failed to decline invite. Please try again.");
+    }
+  };
 
   // Memoized helper functions to prevent recreation on every render
   const getRoomIcon = useMemo(() => (type: string) => {
@@ -350,6 +506,16 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
                 </div>
               );
             })}
+            
+            {/* Load More Button for Recent DMs */}
+            {sectionKey === "recent" && hasMoreDMs && (
+              <button
+                onClick={loadMoreDMs}
+                className="w-full px-2 py-2 mt-2 text-sm font-bold text-blue-600 dark:text-blue-400 hover:text-black dark:hover:text-white hover:bg-gray-200 dark:hover:bg-gray-700 border-2 border-transparent hover:border-black dark:hover:border-gray-600 transition-all"
+              >
+                Load More...
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -388,6 +554,23 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
             >
               Social
             </button>
+            {/* Server Invites Tab - Only show when there are pending invites */}
+            {serverInvites.length > 0 && (
+              <button
+                onClick={() => onTabChange("invites")}
+                className={`flex-1 py-2 px-4 font-black text-sm border-2 border-black dark:border-gray-600 border-l-0 transition-all uppercase text-black dark:text-white relative ${
+                  selectedTab === "invites"
+                    ? "bg-red-400 dark:bg-red-500 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)]"
+                    : "bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600"
+                }`}
+              >
+                Invites
+                {/* Badge for invite count */}
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 border-2 border-black dark:border-gray-600 rounded-full flex items-center justify-center text-xs font-bold text-white">
+                  {serverInvites.length > 9 ? "9+" : serverInvites.length}
+                </span>
+              </button>
+            )}
           </div>
 
           {selectedTab === "friends" ? (
@@ -419,10 +602,66 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
               </div>
 
               {/* Friends Lists */}
-              {renderFriendsSection("Recent DMs", friends.recent, "recent")}
+              {renderFriendsSection("Recent DMs", recentDMs, "recent")}
               {renderFriendsSection("Online", friends.online, "online")}
               {renderFriendsSection("Idle", friends.idle, "idle")}
               {renderFriendsSection("Away", friends.away, "away")}
+            </div>
+          ) : selectedTab === "invites" ? (
+            // Server Invites Tab Content
+            <div>
+              {/* Invites Header */}
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-black text-lg uppercase text-black dark:text-white">
+                  Server Invites
+                </h2>
+                <div className="text-sm font-bold text-red-600 dark:text-red-400">
+                  {serverInvites.length} pending
+                </div>
+              </div>
+
+              {/* Invites List */}
+              <div className="space-y-3">
+                {serverInvites.map((invite) => (
+                  <div
+                    key={invite.id}
+                    className="bg-white dark:bg-gray-700 border-4 border-black dark:border-gray-600 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(55,65,81,1)] p-4"
+                  >
+                    <div className="mb-3">
+                      <h3 className="font-black text-lg text-black dark:text-white">
+                        {invite.serverName}
+                      </h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        Invited by <span className="font-bold">{invite.senderName}</span>
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-500">
+                        {invite.createdAt && new Date(invite.createdAt.seconds * 1000).toLocaleDateString()}
+                      </p>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => acceptServerInvite(invite)}
+                        className="flex-1 px-4 py-2 bg-green-400 dark:bg-green-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-bold text-black dark:text-white"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => declineServerInvite(invite.id)}
+                        className="flex-1 px-4 py-2 bg-red-400 dark:bg-red-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-bold text-white"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {serverInvites.length === 0 && (
+                <div className="text-center py-8 text-gray-600 dark:text-gray-400">
+                  No pending server invites
+                </div>
+              )}
             </div>
           ) : (
             // Social Feed Tab Content
@@ -497,7 +736,10 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
               {selectedServerName || "Server"}
             </h2>
             <button
-              onClick={onServerSettings}
+              onClick={() => {
+                onServerSettings?.();
+                onContentItemClick?.();
+              }}
               className="w-8 h-8 bg-purple-400 dark:bg-purple-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
               title="Server Settings"
             >
@@ -537,7 +779,11 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
                     }}
                   >
                     <div className="text-gray-600 dark:text-gray-400">
-                      {getRoomIcon(room.type)}
+                      {room.icon ? (
+                        <span className="text-lg">{room.icon}</span>
+                      ) : (
+                        getRoomIcon(room.type)
+                      )}
                     </div>
                     <span className="font-medium text-sm text-black dark:text-white">
                       {room.name}

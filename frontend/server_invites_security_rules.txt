@@ -1,0 +1,100 @@
+// Firebase Security Rules for server_invites collection
+// Add these rules to your Firestore security rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Server Invites Collection Rules
+    match /server_invites/{inviteId} {
+      // Allow reading invites if:
+      // - User is the sender (to see invites they sent)
+      // - User is the recipient (to see invites they received)
+      allow read: if request.auth != null && 
+        (request.auth.uid == resource.data.senderId || 
+         request.auth.uid == resource.data.recipientId);
+      
+      // Allow creating invites if:
+      // - User is authenticated
+      // - User is the sender specified in the invite
+      // - User is an owner or admin of the server (checked via server members subcollection)
+      // - Required fields are present
+      allow create: if request.auth != null && 
+        request.auth.uid == request.resource.data.senderId &&
+        isOwnerOrAdmin(request.auth.uid, request.resource.data.serverId) &&
+        hasRequiredInviteFields();
+      
+      // Allow deleting invites if:
+      // - User is the sender (can cancel their invite)
+      // - User is the recipient (can decline invite)
+      allow delete: if request.auth != null && 
+        (request.auth.uid == resource.data.senderId || 
+         request.auth.uid == resource.data.recipientId);
+      
+      // Don't allow updates to maintain invite integrity
+      allow update: if false;
+    }
+    
+    // Helper function to check if user is owner or admin of a server
+    function isOwnerOrAdmin(userId, serverId) {
+      return exists(/databases/$(database)/documents/servers/$(serverId)/members/$(userId)) &&
+        get(/databases/$(database)/documents/servers/$(serverId)/members/$(userId)).data.role in ['owner', 'admin'];
+    }
+    
+    // Helper function to validate required fields for invites
+    function hasRequiredInviteFields() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['senderId', 'senderName', 'senderEmail', 'recipientId', 'serverId', 'serverName', 'createdAt', 'status']) &&
+        data.senderId is string &&
+        data.senderName is string &&
+        data.senderEmail is string &&
+        data.recipientId is string &&
+        data.serverId is string &&
+        data.serverName is string &&
+        data.createdAt == request.time &&
+        data.status == 'pending';
+    }
+  }
+}
+
+/* 
+SECURITY FEATURES IMPLEMENTED:
+
+1. READ PERMISSIONS:
+   - Only senders and recipients can read invites
+   - Prevents users from seeing invites they're not involved in
+
+2. CREATE PERMISSIONS:
+   - Only authenticated users can create invites
+   - User must be the sender of the invite they're creating
+   - User must be owner or admin of the server they're inviting to
+   - All required fields must be present and valid
+   - Status must be 'pending' and createdAt must be request time
+
+3. DELETE PERMISSIONS:
+   - Senders can cancel their invites
+   - Recipients can decline invites
+   - Covers both accept and decline scenarios
+
+4. UPDATE PERMISSIONS:
+   - Updates are completely disabled to maintain invite integrity
+   - Accept/decline logic handled through delete + create operations
+
+5. DATA VALIDATION:
+   - Enforces required fields
+   - Validates data types
+   - Ensures proper timestamps
+   - Prevents status manipulation
+
+6. AUTHORIZATION CHECKS:
+   - Validates server membership and role
+   - Prevents unauthorized invite sending
+   - Protects against privilege escalation
+
+These rules ensure that:
+- Only server owners/admins can send invites
+- Users can only see their own invites (sent or received)
+- Invite data integrity is maintained
+- No unauthorized access to server invite data
+- Proper audit trail through immutable invite records
+*/

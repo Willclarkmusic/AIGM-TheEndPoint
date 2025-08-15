@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import type { User } from "firebase/auth";
 import { FiHome, FiPlus, FiSettings, FiSun, FiMoon, FiLogOut } from "react-icons/fi";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, collection, query, where, onSnapshot } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { db, auth } from "../firebase/config";
 import StatusPopup from "./StatusPopup";
@@ -37,6 +37,7 @@ const ServerBar: React.FC<ServerBarProps> = ({
   const [showStatusPopup, setShowStatusPopup] = useState(false);
   const [showSettingsPopup, setShowSettingsPopup] = useState(false);
   const [hoveredServer, setHoveredServer] = useState<string | null>(null);
+  const [pendingInviteCount, setPendingInviteCount] = useState(0);
   const { theme, toggleTheme } = useTheme();
   const settingsRef = useRef<HTMLDivElement>(null);
 
@@ -94,6 +95,27 @@ const ServerBar: React.FC<ServerBarProps> = ({
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [showSettingsPopup]);
+
+  // Listen for pending server invites
+  useEffect(() => {
+    if (!user?.uid) {
+      setPendingInviteCount(0);
+      return;
+    }
+
+    const invitesRef = collection(db, "server_invites");
+    const invitesQuery = query(
+      invitesRef,
+      where("recipientId", "==", user.uid),
+      where("status", "==", "pending")
+    );
+
+    const unsubscribe = onSnapshot(invitesQuery, (snapshot) => {
+      setPendingInviteCount(snapshot.size);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
 
   // Calculate icon size based on width
   const iconSize = width >= 80 ? 48 : 44; // Smaller icons for narrower sidebar
@@ -171,13 +193,24 @@ const ServerBar: React.FC<ServerBarProps> = ({
       {/* Bottom Icons */}
       <div className="flex flex-col gap-3 mt-4">
         {/* Add Server Button */}
-        <button
-          onClick={onCreateServer}
-          style={{ width: `${iconSize}px`, height: `${iconSize}px` }}
-          className="bg-green-400 dark:bg-green-500 border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
-        >
-          <FiPlus size={20} className="text-black dark:text-white" />
-        </button>
+        <div className="relative">
+          <button
+            onClick={onCreateServer}
+            style={{ width: `${iconSize}px`, height: `${iconSize}px` }}
+            className="bg-green-400 dark:bg-green-500 border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+          >
+            <FiPlus size={20} className="text-black dark:text-white" />
+          </button>
+          
+          {/* Notification Badge for Pending Invites */}
+          {pendingInviteCount > 0 && (
+            <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 border-2 border-black dark:border-gray-600 rounded-full flex items-center justify-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)]">
+              <span className="text-xs font-bold text-white">
+                {pendingInviteCount > 9 ? "9+" : pendingInviteCount}
+              </span>
+            </div>
+          )}
+        </div>
 
         {/* Settings Button */}
         <div className="relative" ref={settingsRef}>

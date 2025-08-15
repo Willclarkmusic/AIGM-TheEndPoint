@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import type { User } from "firebase/auth";
-import { doc, updateDoc, serverTimestamp, onSnapshot, query, where, getDocs, setDoc, collectionGroup, getDoc } from "firebase/firestore";
+import { doc, updateDoc, serverTimestamp, onSnapshot, query, where, getDocs, setDoc, collectionGroup, getDoc, collection } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { db, auth } from "../firebase/config";
 import ServerBar from "./ServerBar";
@@ -24,7 +24,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
   const [serverBarWidth, setServerBarWidth] = useState(64); // Default 64px (w-16)
   const [infoBarWidth, setInfoBarWidth] = useState(240);
   const [selectedServer, setSelectedServer] = useState<string | null>(null);
-  const [selectedTab, setSelectedTab] = useState<"friends" | "feed">("friends");
+  const [selectedTab, setSelectedTab] = useState<"friends" | "feed" | "invites">("friends");
   const [userStatus, setUserStatus] = useState<string>("online");
   const [customStatus, setCustomStatus] = useState<{
     title: string;
@@ -289,30 +289,75 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
   };
 
   // Handle server settings click
-  const handleServerSettings = (serverId: string) => {
+  const handleServerSettings = async (serverId: string) => {
     const server = servers.find((s) => s.id === serverId);
     if (server) {
-      setSelectedServerData({
-        id: server.id,
-        name: server.name,
-        role: server.role as "owner" | "admin" | "member",
-      });
-      setShowServerSettingsView(true);
-      setSelectedRoom(null); // Clear room selection when opening server settings
+      try {
+        // Fetch member count
+        const membersRef = collection(db, `servers/${serverId}/members`);
+        const membersSnapshot = await getDocs(membersRef);
+        const memberCount = membersSnapshot.size;
+
+        setSelectedServerData({
+          id: server.id,
+          name: server.name,
+          role: server.role as "owner" | "admin" | "member",
+          memberCount: memberCount,
+        });
+        setShowServerSettingsView(true);
+        setSelectedRoom(null); // Clear room selection when opening server settings
+      } catch (error) {
+        console.error("Error loading server member count:", error);
+        // Fall back to setting data without member count
+        setSelectedServerData({
+          id: server.id,
+          name: server.name,
+          role: server.role as "owner" | "admin" | "member",
+        });
+        setShowServerSettingsView(true);
+        setSelectedRoom(null);
+      }
     }
   };
 
   // Handle room selection
-  const handleRoomSelect = (
+  const handleRoomSelect = async (
     roomId: string,
     roomName: string,
     serverId: string
   ) => {
-    setSelectedRoom({
-      id: roomId,
-      name: roomName,
-      serverId: serverId,
-    });
+    try {
+      // Fetch room details to get type and other info
+      const roomRef = doc(db, `servers/${serverId}/chat_rooms/${roomId}`);
+      const roomDoc = await getDoc(roomRef);
+      
+      // Get member count for the server (rooms don't have separate member counts)
+      const membersRef = collection(db, `servers/${serverId}/members`);
+      const membersSnapshot = await getDocs(membersRef);
+      const memberCount = membersSnapshot.size;
+
+      let roomType = "chat"; // default
+      if (roomDoc.exists()) {
+        roomType = roomDoc.data().type || "chat";
+      }
+
+      setSelectedRoom({
+        id: roomId,
+        name: roomName,
+        serverId: serverId,
+        type: roomType,
+        memberCount: memberCount,
+      });
+    } catch (error) {
+      console.error("Error loading room details:", error);
+      // Fall back to basic room data
+      setSelectedRoom({
+        id: roomId,
+        name: roomName,
+        serverId: serverId,
+      });
+    }
+    
     setShowServerSettingsView(false); // Close server settings if open
     setShowFriendSearch(false); // Close friend search if open
     setSelectedDM(null); // Close DM if open
@@ -838,6 +883,11 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               selectedRoom={selectedRoom}
               showFriendSearch={showFriendSearch}
               selectedDM={selectedDM}
+              userRole={
+                selectedServer 
+                  ? servers.find(s => s.id === selectedServer)?.role as "owner" | "admin" | "member" | null 
+                  : null
+              }
               onBackFromServerSettings={() => {
                 setShowServerSettingsView(false);
                 setSelectedServerData(null);

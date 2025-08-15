@@ -133,28 +133,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({
 
   return (
     <div className="flex-1 bg-white dark:bg-gray-900 flex flex-col h-full">
-      {/* Room Header */}
-      <div className="flex-shrink-0 bg-gray-100 dark:bg-gray-800 border-b-4 border-black dark:border-gray-600 px-6 py-4">
-        <div className="max-w-4xl mx-auto" style={{ maxWidth: "1000px" }}>
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">
-              {roomData ? getRoomIcon(roomData.type) : "#"}
-            </span>
-            <div>
-              <h2 className="text-xl font-black uppercase text-black dark:text-white">
-                {roomData?.name || roomName}
-              </h2>
-              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                <span className="capitalize">{roomData?.type || "chat"} room</span>
-                <span>•</span>
-                <span className="capitalize">{userRole}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Messages Area - Takes remaining space */}
+      {/* Messages Area - Takes full space */}
       <div className="flex-1 flex flex-col min-h-0">
         <MessageLog
           serverId={serverId}
