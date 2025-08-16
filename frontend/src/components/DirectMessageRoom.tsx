@@ -17,8 +17,9 @@ import {
   getDocs,
   where,
 } from "firebase/firestore";
-import { db } from "../firebase/config";
-import { FiTrash2, FiUserPlus, FiSend, FiSmile, FiX } from "react-icons/fi";
+import { db, storage } from "../firebase/config";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { FiTrash2, FiUserPlus, FiSend, FiSmile, FiX, FiDownload, FiPlay, FiPause, FiFile, FiImage, FiMusic } from "react-icons/fi";
 import EmojiPicker from "./EmojiPicker";
 
 interface DirectMessageRoomProps {
@@ -26,6 +27,39 @@ interface DirectMessageRoomProps {
   participants: string[];
   user: User;
   roomName: string;
+}
+
+/**
+ * Message attachment interface
+ */
+interface MessageAttachment {
+  type: "image" | "audio" | "file";
+  url: string;
+  name: string;
+  size: number;
+  mimeType: string;
+}
+
+/**
+ * Video embed data
+ */
+interface VideoEmbed {
+  type: "youtube" | "vimeo";
+  videoId: string;
+  url: string;
+}
+
+/**
+ * Media file from Personal Media Bucket
+ */
+interface MediaFile {
+  id: string;
+  name: string;
+  type: "image" | "audio" | "file";
+  url: string;
+  size: number;
+  uploadedAt: any;
+  mimeType: string;
 }
 
 interface Message {
@@ -36,6 +70,8 @@ interface Message {
   senderEmail: string;
   timestamp: any;
   createdAt: any;
+  attachment?: MessageAttachment;
+  videoEmbed?: VideoEmbed;
 }
 
 interface ParticipantInfo {
@@ -62,12 +98,324 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [participantInfo, setParticipantInfo] = useState<ParticipantInfo[]>([]);
   const [friends, setFriends] = useState<ParticipantInfo[]>([]);
+  const [hoveredImage, setHoveredImage] = useState<string | null>(null);
+  const [modalImage, setModalImage] = useState<{
+    url: string;
+    name: string;
+  } | null>(null);
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const [attachment, setAttachment] = useState<MessageAttachment | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [showMediaBucket, setShowMediaBucket] = useState(false);
+  const [userMediaFiles, setUserMediaFiles] = useState<any[]>([]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const emojiButtonRef = useRef<HTMLButtonElement>(null);
   const lastMessageDoc = useRef<any>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Extract video ID from YouTube URL
+   */
+  const extractYouTubeId = (url: string): string | null => {
+    const patterns = [
+      /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([^&\s]+)/,
+      /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([^&\s]+)/,
+      /(?:https?:\/\/)?(?:www\.)?youtu\.be\/([^&\s]+)/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    return null;
+  };
+
+  /**
+   * Extract video ID from Vimeo URL
+   */
+  const extractVimeoId = (url: string): string | null => {
+    const patterns = [
+      /(?:https?:\/\/)?(?:www\.)?vimeo\.com\/([0-9]+)/,
+      /(?:https?:\/\/)?player\.vimeo\.com\/video\/([0-9]+)/,
+    ];
+
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+    return null;
+  };
+
+  /**
+   * Detect video links in message text
+   */
+  const detectVideoEmbed = (text: string): VideoEmbed | null => {
+    // Check for YouTube
+    const youtubeId = extractYouTubeId(text);
+    if (youtubeId) {
+      return {
+        type: "youtube",
+        videoId: youtubeId,
+        url: text,
+      };
+    }
+
+    // Check for Vimeo
+    const vimeoId = extractVimeoId(text);
+    if (vimeoId) {
+      return {
+        type: "vimeo",
+        videoId: vimeoId,
+        url: text,
+      };
+    }
+
+    return null;
+  };
+
+  /**
+   * Process message to extract video embeds
+   */
+  const processMessage = (messageData: any): Message => {
+    const message: Message = {
+      id: messageData.id,
+      text: messageData.text || "",
+      senderId: messageData.senderId || "",
+      senderName: messageData.senderName || "Unknown User",
+      senderEmail: messageData.senderEmail || "",
+      timestamp: messageData.timestamp,
+      createdAt: messageData.createdAt || messageData.timestamp,
+      attachment: messageData.attachment,
+    };
+
+    // Check for video embed if no attachment
+    if (!message.attachment && message.text) {
+      const videoEmbed = detectVideoEmbed(message.text);
+      if (videoEmbed) {
+        message.videoEmbed = videoEmbed;
+      }
+    }
+
+    return message;
+  };
+
+  /**
+   * Toggle audio playback
+   */
+  const toggleAudioPlayback = (messageId: string, audioUrl: string) => {
+    if (!audioRef.current) return;
+
+    if (playingAudio === messageId) {
+      audioRef.current.pause();
+      setPlayingAudio(null);
+    } else {
+      audioRef.current.src = audioUrl;
+      audioRef.current.play();
+      setPlayingAudio(messageId);
+    }
+  };
+
+  /**
+   * Format file size
+   */
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+  };
+
+  /**
+   * Determine file type from MIME type
+   */
+  const getFileType = (mimeType: string): "image" | "audio" | "file" => {
+    if (mimeType.startsWith("image/")) return "image";
+    if (mimeType.startsWith("audio/")) return "audio";
+    return "file";
+  };
+
+  /**
+   * Upload file to Firebase Storage
+   */
+  const uploadFile = async (file: File): Promise<MessageAttachment | null> => {
+    const maxSize = 10 * 1024 * 1024; // 10MB limit
+    
+    if (file.size > maxSize) {
+      alert("File size must be less than 10MB");
+      return null;
+    }
+
+    setUploading(true);
+    try {
+      const fileName = `${Date.now()}_${file.name}`;
+      const fileType = getFileType(file.type);
+      const storagePath = `message_attachments/${user.uid}/${fileType}/${fileName}`;
+      const storageRef = ref(storage, storagePath);
+
+      console.log("Uploading file:", file.name, "to", storagePath);
+
+      const uploadResult = await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(uploadResult.ref);
+
+      return {
+        type: fileType,
+        url: downloadURL,
+        name: file.name,
+        size: file.size,
+        mimeType: file.type,
+      };
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      alert("Failed to upload file. Please try again.");
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  /**
+   * Handle file selection from input
+   */
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const attachment = await uploadFile(file);
+    if (attachment) {
+      setAttachment(attachment);
+    }
+
+    // Reset input
+    e.target.value = "";
+  };
+
+  /**
+   * Handle drag over events
+   */
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Check if dragging files from desktop or media bucket data
+    if (e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes("application/json")) {
+      setDragOver(true);
+    }
+  };
+
+  /**
+   * Handle drag leave events
+   */
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only set dragOver to false if leaving the composer area
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX;
+    const y = e.clientY;
+    
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      setDragOver(false);
+    }
+  };
+
+  /**
+   * Handle file drop
+   */
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+
+    // Check for files from desktop
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      const file = files[0]; // Only handle first file
+      const attachment = await uploadFile(file);
+      if (attachment) {
+        setAttachment(attachment);
+      }
+      return;
+    }
+
+    // Check for data from Personal Media Bucket
+    const mediaData = e.dataTransfer.getData("application/json");
+    if (mediaData) {
+      try {
+        const mediaFile = JSON.parse(mediaData);
+        setAttachment({
+          type: mediaFile.type,
+          url: mediaFile.url,
+          name: mediaFile.name,
+          size: mediaFile.size,
+          mimeType: mediaFile.mimeType,
+        });
+      } catch (error) {
+        console.error("Error parsing media data:", error);
+      }
+    }
+  };
+
+  /**
+   * Select media from Personal Media Bucket
+   */
+  const selectMediaFromBucket = (mediaFile: MediaFile) => {
+    setAttachment({
+      type: mediaFile.type,
+      url: mediaFile.url,
+      name: mediaFile.name,
+      size: mediaFile.size,
+      mimeType: mediaFile.mimeType,
+    });
+    setShowMediaBucket(false);
+  };
+
+  /**
+   * Render video embed
+   */
+  const renderVideoEmbed = (embed: VideoEmbed) => {
+    if (embed.type === "youtube") {
+      return (
+        <div className="mt-2 relative pb-[56.25%] h-0 overflow-hidden rounded border-2 border-black dark:border-gray-600">
+          <iframe
+            className="absolute top-0 left-0 w-full h-full"
+            src={`https://www.youtube.com/embed/${embed.videoId}`}
+            title="YouTube video player"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      );
+    }
+
+    if (embed.type === "vimeo") {
+      return (
+        <div className="mt-2 relative pb-[56.25%] h-0 overflow-hidden rounded border-2 border-black dark:border-gray-600">
+          <iframe
+            className="absolute top-0 left-0 w-full h-full"
+            src={`https://player.vimeo.com/video/${embed.videoId}`}
+            title="Vimeo video player"
+            frameBorder="0"
+            allow="autoplay; fullscreen; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+      );
+    }
+
+    return null;
+  };
 
   // Check if user is scrolled to bottom
   const isScrolledToBottom = () => {
@@ -173,6 +521,30 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
     loadFriends();
   }, [user.uid, participants]);
 
+  /**
+   * Load user's media files when media bucket is opened
+   */
+  useEffect(() => {
+    if (!showMediaBucket || !user?.uid) return;
+
+    const mediaQuery = query(
+      collection(db, "user_media"),
+      where("userId", "==", user.uid),
+      orderBy("uploadedAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(mediaQuery, (snapshot) => {
+      const files: MediaFile[] = [];
+      snapshot.docs.forEach((doc) => {
+        const data = doc.data() as MediaFile;
+        files.push({ ...data, id: doc.id });
+      });
+      setUserMediaFiles(files);
+    });
+
+    return () => unsubscribe();
+  }, [showMediaBucket, user?.uid]);
+
   // Load messages
   useEffect(() => {
     if (!dmId) return;
@@ -197,15 +569,7 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
         
         snapshot.forEach((doc) => {
           const data = doc.data();
-          messagesList.push({
-            id: doc.id,
-            text: data.text || "",
-            senderId: data.senderId || "",
-            senderName: data.senderName || "Unknown User",
-            senderEmail: data.senderEmail || "",
-            timestamp: data.timestamp,
-            createdAt: data.createdAt || data.timestamp,
-          });
+          messagesList.push(processMessage({ ...data, id: doc.id }));
         });
 
         messagesList.reverse();
@@ -234,7 +598,7 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
   // Send message function
   const sendMessage = async () => {
     const trimmedMessage = message.trim();
-    if (!trimmedMessage || sending) return;
+    if ((!trimmedMessage && !attachment) || sending || uploading) return;
 
     setSending(true);
     const startTime = performance.now();
@@ -242,7 +606,9 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
 
     // Optimistic UI update - clear input immediately
     const originalMessage = message;
+    const originalAttachment = attachment;
     setMessage("");
+    setAttachment(null);
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -256,14 +622,28 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
       // Add message to batch
       const messagesRef = collection(db, `private_messages/${dmId}/messages`);
       const messageRef = doc(messagesRef);
-      batch.set(messageRef, {
+
+      const messageData: any = {
         text: trimmedMessage,
         senderId: user.uid,
         senderName: user.displayName || user.email?.split("@")[0] || "Anonymous",
         senderEmail: user.email || "",
         timestamp: serverTimestamp(),
         createdAt: serverTimestamp(),
-      });
+      };
+
+      // Add attachment data if present
+      if (originalAttachment) {
+        messageData.attachment = {
+          type: originalAttachment.type,
+          url: originalAttachment.url,
+          name: originalAttachment.name,
+          size: originalAttachment.size,
+          mimeType: originalAttachment.mimeType,
+        };
+      }
+
+      batch.set(messageRef, messageData);
 
       // Update DM room in batch
       const dmRef = doc(db, "private_messages", dmId);
@@ -288,6 +668,7 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
       
       // Revert optimistic update on error
       setMessage(originalMessage);
+      setAttachment(originalAttachment);
       if (textareaRef.current) {
         textareaRef.current.focus();
         textareaRef.current.style.height = "auto";
@@ -516,24 +897,149 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
                         </div>
 
                         <div className={`relative group ${isOwnMessage ? "text-right" : "text-left"}`}>
-                          <div
-                            className={`inline-block px-4 py-2 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] ${
-                              isOwnMessage
-                                ? "bg-purple-400 dark:bg-purple-500 text-black dark:text-white"
-                                : "bg-white dark:bg-gray-700 text-black dark:text-white"
-                            } break-words ${
-                              isEmojiOnlyMessage(msg.text) ? "text-6xl leading-tight" : ""
-                            }`}
-                          >
-                            {msg.text}
-                          </div>
+                          {/* Text content */}
+                          {msg.text && !msg.videoEmbed && (
+                            <div
+                              className={`inline-block px-4 py-2 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] ${
+                                isOwnMessage
+                                  ? "bg-purple-400 dark:bg-purple-500 text-black dark:text-white"
+                                  : "bg-white dark:bg-gray-700 text-black dark:text-white"
+                              } break-words ${
+                                isEmojiOnlyMessage(msg.text) ? "text-6xl leading-tight" : ""
+                              }`}
+                            >
+                              {msg.text}
+                            </div>
+                          )}
 
+                          {/* Video embed */}
+                          {msg.videoEmbed && (
+                            <div className={`inline-block ${isOwnMessage ? "" : ""}`}>
+                              <div className="mb-2">
+                                <div
+                                  className={`inline-block px-4 py-2 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] ${
+                                    isOwnMessage
+                                      ? "bg-purple-400 dark:bg-purple-500 text-black dark:text-white"
+                                      : "bg-white dark:bg-gray-700 text-black dark:text-white"
+                                  } break-words`}
+                                >
+                                  {msg.text}
+                                </div>
+                              </div>
+                              <div className="max-w-md">
+                                {renderVideoEmbed(msg.videoEmbed)}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Attachment */}
+                          {msg.attachment && (
+                            <div className={`mt-2 ${isOwnMessage ? "inline-block" : "inline-block"}`}>
+                              {/* Image attachment */}
+                              {msg.attachment.type === "image" && (
+                                <div className="max-w-xs relative">
+                                  <img 
+                                    src={msg.attachment.url} 
+                                    alt={msg.attachment.name}
+                                    className="w-full max-h-48 object-cover rounded border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] cursor-pointer hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all"
+                                    onClick={() => setModalImage({
+                                      url: msg.attachment!.url,
+                                      name: msg.attachment!.name
+                                    })}
+                                    onMouseEnter={() => setHoveredImage(msg.id)}
+                                    onMouseLeave={() => setHoveredImage(null)}
+                                  />
+                                  
+                                  {/* Download button on hover */}
+                                  {hoveredImage === msg.id && (
+                                    <a
+                                      href={msg.attachment.url}
+                                      download={msg.attachment.name}
+                                      className="absolute bottom-2 right-2 w-8 h-8 bg-black/70 backdrop-blur-sm border-2 border-white shadow-[2px_2px_0px_0px_rgba(255,255,255,0.8)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center rounded"
+                                      title="Download image"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <FiDownload size={14} className="text-white" />
+                                    </a>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Audio attachment */}
+                              {msg.attachment.type === "audio" && (
+                                <div className="bg-white dark:bg-gray-700 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] p-3 rounded">
+                                  <div className="flex items-center gap-3">
+                                    <button
+                                      onClick={() => toggleAudioPlayback(msg.id, msg.attachment!.url)}
+                                      className="w-10 h-10 bg-purple-400 dark:bg-purple-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+                                    >
+                                      {playingAudio === msg.id ? (
+                                        <FiPause size={16} className="text-black dark:text-white" />
+                                      ) : (
+                                        <FiPlay size={16} className="text-black dark:text-white" />
+                                      )}
+                                    </button>
+                                    
+                                    <div className="flex-1">
+                                      <p className="font-bold text-sm text-black dark:text-white truncate">
+                                        {msg.attachment.name}
+                                      </p>
+                                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        Audio • {formatFileSize(msg.attachment.size)}
+                                      </p>
+                                    </div>
+
+                                    <a
+                                      href={msg.attachment.url}
+                                      download={msg.attachment.name}
+                                      className="w-8 h-8 bg-blue-400 dark:bg-blue-500 border border-black dark:border-gray-600 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] dark:shadow-[1px_1px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+                                      title="Download"
+                                    >
+                                      <FiDownload size={12} className="text-black dark:text-white" />
+                                    </a>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* File attachment */}
+                              {msg.attachment.type === "file" && (
+                                <div className="bg-white dark:bg-gray-700 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] p-3 rounded">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-gray-200 dark:bg-gray-600 border border-black dark:border-gray-500 rounded flex items-center justify-center">
+                                      <FiFile size={20} className="text-blue-600 dark:text-blue-400" />
+                                    </div>
+                                    
+                                    <div className="flex-1">
+                                      <p className="font-bold text-sm text-black dark:text-white truncate">
+                                        {msg.attachment.name}
+                                      </p>
+                                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                                        {formatFileSize(msg.attachment.size)}
+                                      </p>
+                                    </div>
+
+                                    <a
+                                      href={msg.attachment.url}
+                                      download={msg.attachment.name}
+                                      className="w-8 h-8 bg-blue-400 dark:bg-blue-500 border border-black dark:border-gray-600 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] dark:shadow-[1px_1px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+                                      title="Download"
+                                    >
+                                      <FiDownload size={12} className="text-black dark:text-white" />
+                                    </a>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Delete Button */}
                           {hoveredMessage === msg.id && msg.senderId === user.uid && (
                             <button
                               onClick={() => deleteMessage(msg.id, msg.senderId)}
                               className={`absolute top-0 w-6 h-6 bg-red-500 border border-black shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center ${
                                 isOwnMessage ? "-left-8" : "-right-8"
                               }`}
+                              title="Delete message"
                             >
                               <FiTrash2 size={12} className="text-white" />
                             </button>
@@ -552,8 +1058,80 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
       </div>
 
       {/* Message Composer */}
-      <div className="border-t-4 border-black dark:border-gray-600 bg-gray-100 dark:bg-gray-800 p-4">
-        <div className="max-w-4xl mx-auto" style={{ maxWidth: "1000px" }}>
+      <div 
+        className="border-t-4 border-black dark:border-gray-600 bg-gray-100 dark:bg-gray-800 p-4"
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <div
+          className="max-w-4xl mx-auto"
+          style={{ maxWidth: "1000px" }}
+        >
+          {/* Drag overlay */}
+          {dragOver && (
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-400/30 to-purple-400/30 dark:from-blue-500/30 dark:to-purple-500/30 border-4 border-dashed border-blue-600 dark:border-blue-400 flex items-center justify-center z-10 pointer-events-none animate-pulse">
+              <div className="bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(55,65,81,1)] p-8 rounded-lg transform scale-105">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-3xl">📎</span>
+                  <p className="text-xl font-black text-black dark:text-white">Drop to Attach</p>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 text-center">
+                  Release to add file to your message
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Attachment preview */}
+          {attachment && (
+            <div className="mb-3 bg-white dark:bg-gray-700 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {/* Icon based on type */}
+                  {attachment.type === "image" && <FiImage size={20} className="text-green-600 dark:text-green-400" />}
+                  {attachment.type === "audio" && <FiMusic size={20} className="text-purple-600 dark:text-purple-400" />}
+                  {attachment.type === "file" && <FiFile size={20} className="text-blue-600 dark:text-blue-400" />}
+                  
+                  <div>
+                    <p className="font-bold text-sm text-black dark:text-white truncate max-w-xs">
+                      {attachment.name}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {formatFileSize(attachment.size)}
+                    </p>
+                  </div>
+                </div>
+                
+                <button
+                  onClick={() => setAttachment(null)}
+                  className="w-6 h-6 bg-red-400 dark:bg-red-500 border border-black dark:border-gray-600 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] dark:shadow-[1px_1px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+                  title="Remove attachment"
+                >
+                  <FiX size={12} className="text-black dark:text-white" />
+                </button>
+              </div>
+              
+              {/* Image preview */}
+              {attachment.type === "image" && (
+                <img 
+                  src={attachment.url} 
+                  alt={attachment.name}
+                  className="mt-2 max-h-32 rounded border-2 border-black dark:border-gray-600"
+                />
+              )}
+            </div>
+          )}
+
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={handleFileSelect}
+            className="hidden"
+            accept="image/*,audio/*,.pdf,.txt,.doc,.docx"
+          />
+
           <div className="flex gap-3 items-end">
             <div className="flex-1 relative">
               <textarea
@@ -562,9 +1140,9 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
                 placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
-                disabled={sending}
+                disabled={sending || uploading}
                 rows={1}
-                className="w-full px-4 py-3 pr-12 border-2 border-black dark:border-gray-600 bg-white dark:bg-gray-700 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:focus:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] transition-all resize-none overflow-hidden font-medium leading-tight"
+                className="w-full px-4 py-3 pr-20 border-2 border-black dark:border-gray-600 bg-white dark:bg-gray-700 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:focus:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] transition-all resize-none overflow-hidden font-medium leading-tight"
                 style={{
                   minHeight: "48px",
                   maxHeight: "200px",
@@ -572,31 +1150,53 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
                 }}
               />
               
-              <button
-                ref={emojiButtonRef}
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                disabled={sending}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 w-8 h-8 bg-yellow-400 dark:bg-yellow-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                title="Add emoji"
-                type="button"
-              >
-                <FiSmile size={14} className="text-black dark:text-white hover:translate-x-0.5 hover:translate-y-0.5 transition-transform" />
-              </button>
+              {/* Action buttons - Inside textarea */}
+              <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+                {/* Media bucket button */}
+                <button
+                  onClick={() => setShowMediaBucket(true)}
+                  disabled={sending || uploading}
+                  className="w-8 h-8 bg-green-400 dark:bg-green-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Add image from media bucket"
+                  type="button"
+                >
+                  <FiImage size={14} className="text-black dark:text-white" />
+                </button>
+                
+                {/* Emoji button */}
+                <button
+                  ref={emojiButtonRef}
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  disabled={sending}
+                  className="w-8 h-8 bg-yellow-400 dark:bg-yellow-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Add emoji"
+                  type="button"
+                >
+                  <FiSmile size={14} className="text-black dark:text-white" />
+                </button>
+              </div>
             </div>
 
             <button
               onClick={sendMessage}
-              disabled={!message.trim() || sending}
+              disabled={(!message.trim() && !attachment) || sending || uploading}
               className="w-12 h-12 bg-purple-400 dark:bg-purple-500 border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] disabled:hover:translate-x-0 disabled:hover:translate-y-0 flex-shrink-0"
               title="Send message"
             >
               <FiSend 
                 size={16} 
                 className={`text-black dark:text-white ${
-                  sending ? "opacity-50" : ""
+                  sending || uploading ? "opacity-50" : ""
                 }`} 
               />
             </button>
+          </div>
+
+          {/* Helper Text */}
+          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 text-center">
+            Press <kbd className="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded text-xs">Enter</kbd> to send, 
+            <kbd className="px-1 py-0.5 bg-gray-200 dark:bg-gray-600 border border-gray-300 dark:border-gray-500 rounded text-xs ml-1">Shift + Enter</kbd> for new line
+            • Drag & drop files to attach
           </div>
         </div>
         
@@ -606,6 +1206,82 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
             onClose={() => setShowEmojiPicker(false)}
             anchorRef={emojiButtonRef}
           />
+        )}
+
+        {/* Personal Media Bucket Modal */}
+        {showMediaBucket && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(55,65,81,1)] max-w-4xl w-full max-h-[80vh] flex flex-col">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-4 border-b-2 border-black dark:border-gray-600">
+                <h3 className="text-xl font-black uppercase text-black dark:text-white">
+                  Select Media from Bucket
+                </h3>
+                <button
+                  onClick={() => setShowMediaBucket(false)}
+                  className="w-8 h-8 bg-red-400 dark:bg-red-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+                >
+                  <FiX size={16} className="text-black dark:text-white" />
+                </button>
+              </div>
+
+              {/* Media Grid */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {userMediaFiles.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                    <p className="mb-2">No media files in your bucket</p>
+                    <p className="text-sm">Upload files to your Personal Media Bucket from the right sidebar</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {userMediaFiles.map((file) => (
+                      <button
+                        key={file.id}
+                        onClick={() => selectMediaFromBucket(file)}
+                        className="bg-white dark:bg-gray-700 border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all p-3 text-left"
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("application/json", JSON.stringify(file));
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
+                      >
+                        {/* File preview */}
+                        {file.type === "image" ? (
+                          <img 
+                            src={file.url} 
+                            alt={file.name}
+                            className="w-full h-24 object-cover mb-2 border border-black dark:border-gray-600"
+                          />
+                        ) : (
+                          <div className="w-full h-24 bg-gray-100 dark:bg-gray-600 border border-black dark:border-gray-500 flex items-center justify-center mb-2">
+                            {file.type === "audio" && <FiMusic size={32} className="text-purple-600 dark:text-purple-400" />}
+                            {file.type === "file" && <FiFile size={32} className="text-blue-600 dark:text-blue-400" />}
+                          </div>
+                        )}
+                        
+                        <p className="text-xs font-bold text-black dark:text-white truncate">
+                          {file.name}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {formatFileSize(file.size)}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Upload from desktop button */}
+              <div className="p-4 border-t-2 border-black dark:border-gray-600">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full px-4 py-3 bg-purple-400 dark:bg-purple-500 border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-bold text-black dark:text-white"
+                >
+                  Or Upload New File from Desktop
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
@@ -651,6 +1327,65 @@ const DirectMessageRoom: React.FC<DirectMessageRoomProps> = ({
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Hidden audio element */}
+      <audio
+        ref={audioRef}
+        onEnded={() => setPlayingAudio(null)}
+        onError={() => setPlayingAudio(null)}
+      />
+
+      {/* Image Modal */}
+      {modalImage && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+          <div className="relative max-w-4xl max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_rgba(55,65,81,1)] p-4 mb-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-black text-black dark:text-white truncate pr-4">
+                  {modalImage.name}
+                </h3>
+                <div className="flex items-center gap-2">
+                  {/* Download button */}
+                  <a
+                    href={modalImage.url}
+                    download={modalImage.name}
+                    className="w-10 h-10 bg-blue-400 dark:bg-blue-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+                    title="Download image"
+                  >
+                    <FiDownload size={16} className="text-black dark:text-white" />
+                  </a>
+                  
+                  {/* Close button */}
+                  <button
+                    onClick={() => setModalImage(null)}
+                    className="w-10 h-10 bg-red-400 dark:bg-red-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+                    title="Close"
+                  >
+                    <span className="text-black dark:text-white font-bold">×</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            {/* Modal Image */}
+            <div className="bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_rgba(55,65,81,1)] p-4 flex items-center justify-center overflow-hidden">
+              <img 
+                src={modalImage.url} 
+                alt={modalImage.name}
+                className="max-w-full max-h-[70vh] object-contain"
+                onClick={() => setModalImage(null)}
+              />
+            </div>
+          </div>
+          
+          {/* Backdrop click to close */}
+          <div 
+            className="absolute inset-0 -z-10"
+            onClick={() => setModalImage(null)}
+          />
         </div>
       )}
     </div>

@@ -6,6 +6,7 @@ import { db, auth } from "../firebase/config";
 import ServerBar from "./ServerBar";
 import InfoBar from "./InfoBar";
 import ActionWindow from "./ActionWindow";
+import RightSidebar from "./RightSidebar";
 import MobileHeader from "./MobileHeader";
 import MobileFooter from "./MobileFooter";
 import MobileServerBar from "./MobileServerBar";
@@ -23,6 +24,8 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
   const { theme, toggleTheme } = useTheme();
   const [serverBarWidth, setServerBarWidth] = useState(64); // Default 64px (w-16)
   const [infoBarWidth, setInfoBarWidth] = useState(240);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(320);
+  const [showRightSidebar, setShowRightSidebar] = useState(false);
   const [selectedServer, setSelectedServer] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<"friends" | "feed" | "invites">("friends");
   const [userStatus, setUserStatus] = useState<string>("online");
@@ -44,6 +47,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
 
   const isResizingServer = useRef(false);
   const isResizingInfo = useRef(false);
+  const isResizingRight = useRef(false);
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Server management states
@@ -423,6 +427,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
     e.preventDefault();
   };
 
+  // Handle resizing of RightSidebar
+  const handleRightMouseDown = (e: React.MouseEvent) => {
+    isResizingRight.current = true;
+    e.preventDefault();
+  };
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isResizingServer.current) {
@@ -436,12 +446,18 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
         if (newWidth >= 180 && newWidth <= 400) {
           setInfoBarWidth(newWidth);
         }
+      } else if (isResizingRight.current) {
+        const newWidth = window.innerWidth - e.clientX;
+        if (newWidth >= 280 && newWidth <= 500) {
+          setRightSidebarWidth(newWidth);
+        }
       }
     };
 
     const handleMouseUp = () => {
       isResizingServer.current = false;
       isResizingInfo.current = false;
+      isResizingRight.current = false;
     };
 
     document.addEventListener("mousemove", handleMouseMove);
@@ -451,7 +467,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [serverBarWidth]);
+  }, [serverBarWidth, rightSidebarWidth]);
 
   // Mobile footer handlers
   const handleMobileFooterClick = (tab: "profile" | "settings") => {
@@ -903,9 +919,28 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               onBackFromDM={() => {
                 setSelectedDM(null);
               }}
+              onToggleRightSidebar={() => setShowRightSidebar(!showRightSidebar)}
             />
           )}
         </div>
+
+        {/* Right Sidebar - Only visible on desktop */}
+        {showRightSidebar && (
+          <div className="hidden md:flex">
+            {/* Resize Handle for RightSidebar */}
+            <div
+              className="w-1 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 cursor-col-resize transition-colors"
+              onMouseDown={handleRightMouseDown}
+            />
+            
+            <RightSidebar
+              width={rightSidebarWidth}
+              isCollapsed={false}
+              onToggleCollapse={() => setShowRightSidebar(false)}
+              user={user}
+            />
+          </div>
+        )}
       </div>
 
       {/* Modals */}
