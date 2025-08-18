@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import type { User } from "firebase/auth";
-import { FiHome, FiPlus, FiSettings, FiSun, FiMoon, FiLogOut } from "react-icons/fi";
+import { FiHome, FiPlus, FiSettings, FiSun, FiMoon, FiLogOut, FiActivity } from "react-icons/fi";
 import { doc, updateDoc, collection, query, where, onSnapshot } from "firebase/firestore";
 import { signOut } from "firebase/auth";
 import { db, auth } from "../firebase/config";
 import StatusPopup from "./StatusPopup";
 import { useTheme } from "../contexts/ThemeContext";
+import { testFirestoreConnection, getPerformanceDiagnostics } from "../utils/performanceUtils";
 
 interface ServerBarProps {
   width: number;
@@ -36,10 +37,21 @@ const ServerBar: React.FC<ServerBarProps> = ({
 }) => {
   const [showStatusPopup, setShowStatusPopup] = useState(false);
   const [showSettingsPopup, setShowSettingsPopup] = useState(false);
+  const [showCreateServer, setShowCreateServer] = useState(false);
   const [hoveredServer, setHoveredServer] = useState<string | null>(null);
   const [pendingInviteCount, setPendingInviteCount] = useState(0);
+  const [isTestingDB, setIsTestingDB] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const settingsRef = useRef<HTMLDivElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+  const createServerRef = useRef<HTMLDivElement>(null);
+
+  // Close all popups function
+  const closeAllPopups = () => {
+    setShowStatusPopup(false);
+    setShowSettingsPopup(false);
+    setShowCreateServer(false);
+  };
 
   // Get status color
   const getStatusColor = () => {
@@ -195,7 +207,10 @@ const ServerBar: React.FC<ServerBarProps> = ({
         {/* Add Server Button */}
         <div className="relative">
           <button
-            onClick={onCreateServer}
+            onClick={() => {
+              closeAllPopups();
+              onCreateServer();
+            }}
             style={{ width: `${iconSize}px`, height: `${iconSize}px` }}
             className="bg-green-400 dark:bg-green-500 border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
           >
@@ -215,7 +230,14 @@ const ServerBar: React.FC<ServerBarProps> = ({
         {/* Settings Button */}
         <div className="relative" ref={settingsRef}>
           <button
-            onClick={() => setShowSettingsPopup(!showSettingsPopup)}
+            onClick={() => {
+              if (showSettingsPopup) {
+                setShowSettingsPopup(false);
+              } else {
+                closeAllPopups();
+                setShowSettingsPopup(true);
+              }
+            }}
             style={{ width: `${iconSize}px`, height: `${iconSize}px` }}
             className="bg-purple-400 dark:bg-purple-500 border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
           >
@@ -225,8 +247,8 @@ const ServerBar: React.FC<ServerBarProps> = ({
           {/* Settings Popup */}
           {showSettingsPopup && (
             <div
-              className="absolute bottom-0 ml-2 bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_rgba(55,65,81,1)] p-4 z-50 min-w-48"
-              style={{ left: `${width}px` }}
+              className="absolute bottom-0 ml-2 bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] dark:shadow-[6px_6px_0px_0px_rgba(55,65,81,1)] p-4 z-50"
+              style={{ left: `${width}px`, minWidth: '280px' }}
             >
               <button
                 onClick={() => {
@@ -255,6 +277,42 @@ const ServerBar: React.FC<ServerBarProps> = ({
               >
                 Server Settings
               </button>
+              <div className="mt-3">
+                <button
+                  onClick={async () => {
+                    setIsTestingDB(true);
+                    console.log("🔧 Running performance diagnostics...");
+                    console.log("System info:", getPerformanceDiagnostics());
+                    
+                    try {
+                      const result = await testFirestoreConnection();
+                      
+                      if (result.success) {
+                        alert(`Connection Test Results:\n\nRead: ${result.readLatency.toFixed(2)}ms\nWrite: ${result.writeLatency.toFixed(2)}ms\nDelete: ${result.deleteLatency.toFixed(2)}ms\nTotal: ${result.totalLatency.toFixed(2)}ms\n\n${result.totalLatency > 2000 ? '⚠️ Slow connection detected!' : '✅ Connection looks good!'}`);
+                      } else {
+                        alert(`Connection Test Failed!\n\nError: ${result.error}\n\nCheck console for details.`);
+                      }
+                    } finally {
+                      setIsTestingDB(false);
+                      setShowSettingsPopup(false);
+                    }
+                  }}
+                  disabled={isTestingDB}
+                  className="w-full px-4 py-3 bg-orange-400 dark:bg-orange-500 border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-bold text-black dark:text-white flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] disabled:hover:translate-x-0 disabled:hover:translate-y-0"
+                >
+                  {isTestingDB ? (
+                    <>
+                      <div className="animate-spin w-4 h-4 border-2 border-black dark:border-white border-t-transparent dark:border-t-transparent rounded-full" />
+                      Testing Connection...
+                    </>
+                  ) : (
+                    <>
+                      <FiActivity size={16} className="text-black dark:text-white" />
+                      Test DB Performance
+                    </>
+                  )}
+                </button>
+              </div>
               <hr className="my-2 border-gray-300 dark:border-gray-600" />
               <button
                 onClick={async () => {
@@ -276,9 +334,16 @@ const ServerBar: React.FC<ServerBarProps> = ({
         </div>
 
         {/* User Profile Button */}
-        <div className="relative">
+        <div className="relative" ref={statusRef}>
           <button
-            onClick={() => setShowStatusPopup(!showStatusPopup)}
+            onClick={() => {
+              if (showStatusPopup) {
+                setShowStatusPopup(false);
+              } else {
+                closeAllPopups();
+                setShowStatusPopup(true);
+              }
+            }}
             style={{ width: `${iconSize}px`, height: `${iconSize}px` }}
             className="bg-pink-400 dark:bg-pink-500 border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center font-bold relative text-black dark:text-white"
           >

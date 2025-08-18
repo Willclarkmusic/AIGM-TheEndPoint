@@ -25,9 +25,11 @@ import { auth, db } from "./firebase/config";
 import HomeScreen from "./components/HomeScreen";
 import ServerTest from "./components/ServerTest";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import AdminMigration from "./components/AdminMigration";
 
 const googleProvider = new GoogleAuthProvider();
 const githubProvider = new GithubAuthProvider();
+
 
 // Helper function to create user document in Firestore
 const createUserDocument = async (
@@ -48,6 +50,7 @@ const createUserDocument = async (
       createdAt: serverTimestamp(),
       lastSeen: serverTimestamp(),
       status: "online",
+      subscribedTags: [], // Initialize empty array for tag subscriptions
     };
     await setDoc(userDocRef, userData);
     console.log("User document created successfully");
@@ -86,7 +89,7 @@ const LoginPage: React.FC = () => {
     try {
       const authProvider =
         provider === "google" ? googleProvider : githubProvider;
-      
+
       // Try popup first, fallback to redirect if popup fails
       try {
         const result = await signInWithPopup(auth, authProvider);
@@ -94,24 +97,25 @@ const LoginPage: React.FC = () => {
         navigate("/dashboard");
       } catch (popupError: any) {
         // If popup fails due to COOP or popup blocking, fallback to redirect
-        if (popupError.code === 'auth/popup-blocked' || 
-            popupError.code === 'auth/popup-closed-by-user' ||
-            popupError.message?.includes('Cross-Origin-Opener-Policy')) {
-          
-          console.warn('Popup blocked, falling back to redirect method');
+        if (
+          popupError.code === "auth/popup-blocked" ||
+          popupError.code === "auth/popup-closed-by-user" ||
+          popupError.message?.includes("Cross-Origin-Opener-Policy")
+        ) {
+          console.warn("Popup blocked, falling back to redirect method");
           // Store the current path to redirect back after auth
-          sessionStorage.setItem('authRedirectPath', window.location.pathname);
-          
+          sessionStorage.setItem("authRedirectPath", window.location.pathname);
+
           // Use redirect method as fallback
-          const { signInWithRedirect } = await import('firebase/auth');
+          const { signInWithRedirect } = await import("firebase/auth");
           await signInWithRedirect(auth, authProvider);
           return; // Don't continue, redirect will handle navigation
         }
         throw popupError; // Re-throw if it's not a popup issue
       }
     } catch (error: any) {
-      console.error('Social login error:', error);
-      setError(error.message || 'Login failed. Please try again.');
+      console.error("Social login error:", error);
+      setError(error.message || "Login failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -120,7 +124,9 @@ const LoginPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-yellow-300 dark:bg-gray-900 flex items-center justify-center p-4">
       <div className="bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(55,65,81,1)] p-8 w-full max-w-md">
-        <h1 className="text-4xl font-black text-black dark:text-white mb-8 uppercase">Login</h1>
+        <h1 className="text-4xl font-black text-black dark:text-white mb-8 uppercase">
+          Login
+        </h1>
 
         {error && (
           <div className="bg-red-500 text-white p-4 mb-6 border-2 border-black dark:border-gray-600 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(55,65,81,1)]">
@@ -249,7 +255,7 @@ const SignupPage: React.FC = () => {
     try {
       const authProvider =
         provider === "google" ? googleProvider : githubProvider;
-      
+
       // Try popup first, fallback to redirect if popup fails
       try {
         const result = await signInWithPopup(auth, authProvider);
@@ -257,24 +263,25 @@ const SignupPage: React.FC = () => {
         navigate("/dashboard");
       } catch (popupError: any) {
         // If popup fails due to COOP or popup blocking, fallback to redirect
-        if (popupError.code === 'auth/popup-blocked' || 
-            popupError.code === 'auth/popup-closed-by-user' ||
-            popupError.message?.includes('Cross-Origin-Opener-Policy')) {
-          
-          console.warn('Popup blocked, falling back to redirect method');
+        if (
+          popupError.code === "auth/popup-blocked" ||
+          popupError.code === "auth/popup-closed-by-user" ||
+          popupError.message?.includes("Cross-Origin-Opener-Policy")
+        ) {
+          console.warn("Popup blocked, falling back to redirect method");
           // Store the current path to redirect back after auth
-          sessionStorage.setItem('authRedirectPath', window.location.pathname);
-          
+          sessionStorage.setItem("authRedirectPath", window.location.pathname);
+
           // Use redirect method as fallback
-          const { signInWithRedirect } = await import('firebase/auth');
+          const { signInWithRedirect } = await import("firebase/auth");
           await signInWithRedirect(auth, authProvider);
           return; // Don't continue, redirect will handle navigation
         }
         throw popupError; // Re-throw if it's not a popup issue
       }
     } catch (error: any) {
-      console.error('Social signup error:', error);
-      setError(error.message || 'Signup failed. Please try again.');
+      console.error("Social signup error:", error);
+      setError(error.message || "Signup failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -406,10 +413,10 @@ const Dashboard: React.FC = () => {
         if (result?.user) {
           await createUserDocument(result.user);
           // Clear the stored redirect path
-          sessionStorage.removeItem('authRedirectPath');
+          sessionStorage.removeItem("authRedirectPath");
         }
       } catch (error) {
-        console.error('Redirect result error:', error);
+        console.error("Redirect result error:", error);
       }
     };
 
@@ -433,8 +440,12 @@ const Dashboard: React.FC = () => {
     return (
       <div className="min-h-screen bg-purple-400 dark:bg-gray-900 flex items-center justify-center">
         <div className="bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(55,65,81,1)] p-8 text-center">
-          <h2 className="text-2xl font-black mb-4 uppercase text-black dark:text-white">Loading...</h2>
-          <p className="text-gray-600 dark:text-gray-300">Setting up your account...</p>
+          <h2 className="text-2xl font-black mb-4 uppercase text-black dark:text-white">
+            Loading...
+          </h2>
+          <p className="text-gray-600 dark:text-gray-300">
+            Setting up your account...
+          </p>
         </div>
       </div>
     );
@@ -455,9 +466,9 @@ const TestPage: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setLoading(false);
-      
+
       if (!currentUser) {
-        navigate('/login');
+        navigate("/login");
       }
     });
 
@@ -468,8 +479,12 @@ const TestPage: React.FC = () => {
     return (
       <div className="min-h-screen bg-purple-400 dark:bg-gray-900 flex items-center justify-center">
         <div className="bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] dark:shadow-[8px_8px_0px_0px_rgba(55,65,81,1)] p-8 text-center">
-          <h2 className="text-2xl font-black mb-4 uppercase text-black dark:text-white">Loading...</h2>
-          <p className="text-gray-600 dark:text-gray-300">Setting up test environment...</p>
+          <h2 className="text-2xl font-black mb-4 uppercase text-black dark:text-white">
+            Loading...
+          </h2>
+          <p className="text-gray-600 dark:text-gray-300">
+            Setting up test environment...
+          </p>
         </div>
       </div>
     );
@@ -481,8 +496,8 @@ const TestPage: React.FC = () => {
     <div className="min-h-screen bg-purple-400 dark:bg-gray-900">
       <div className="container mx-auto">
         <div className="p-4">
-          <Link 
-            to="/dashboard" 
+          <Link
+            to="/dashboard"
             className="inline-block mb-4 bg-gray-400 dark:bg-gray-500 text-black dark:text-white font-black py-2 px-4 border-2 border-black dark:border-gray-600 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] dark:shadow-[3px_3px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all uppercase text-decoration-none"
           >
             ← Back to Dashboard
@@ -505,6 +520,7 @@ function App() {
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/test" element={<TestPage />} />
+          <Route path="/admin/migrate" element={<AdminMigration />} />
         </Routes>
       </Router>
     </ThemeProvider>

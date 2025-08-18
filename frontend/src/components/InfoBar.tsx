@@ -5,12 +5,17 @@ import {
   FiChevronDown,
   FiChevronRight,
   FiSettings,
+  FiPlus,
+  FiSearch,
+  FiHash,
+  FiEdit3,
 } from "react-icons/fi";
 import { FaHashtag, FaRobot, FaImage } from "react-icons/fa";
-import { collection, onSnapshot, query, orderBy, where, getDocs, limit, doc, deleteDoc, addDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, where, getDocs, limit, doc, deleteDoc, addDoc, setDoc, serverTimestamp, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type { User } from "firebase/auth";
-import { testFirestoreConnection, getPerformanceDiagnostics } from "../utils/performanceUtils";
+import FeedModal from "./FeedModal";
+import { searchTags } from "../utils/migrateTags";
 
 interface InfoBarProps {
   width: number;
@@ -26,6 +31,10 @@ interface InfoBarProps {
   onAddFriendClick?: () => void;
   onFriendClick?: (friend: Friend) => void;
   user?: User;
+  onCreatePost?: () => void;
+  onFeedSelect?: (feed: CustomFeed) => void;
+  onTagSelect?: (tag: string) => void;
+  selectedFeed?: CustomFeed | null;
 }
 
 interface Friend {
@@ -57,6 +66,18 @@ interface ServerInvite {
   status: "pending";
 }
 
+interface CustomFeed {
+  id: string;
+  name: string;
+  tags: string[];
+}
+
+interface Tag {
+  id: string;
+  name: string;
+  count?: number;
+}
+
 const InfoBar: React.FC<InfoBarProps> = React.memo(({
   width,
   selectedServer,
@@ -71,6 +92,10 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
   onAddFriendClick,
   onFriendClick,
   user,
+  onCreatePost,
+  onFeedSelect,
+  onTagSelect,
+  selectedFeed,
 }) => {
   const [expandedSections, setExpandedSections] = useState<
     Record<string, boolean>
@@ -80,6 +105,8 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
     idle: true,
     away: false,
     rooms: true,
+    feeds: true,
+    tags: true,
   });
 
   const [rooms, setRooms] = useState<
@@ -108,6 +135,19 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
   const [recentDMs, setRecentDMs] = useState<RecentDM[]>([]);
   const [dmLoadLimit, setDmLoadLimit] = useState(10);
   const [hasMoreDMs, setHasMoreDMs] = useState(false);
+  
+  // Social feed state
+  const [tagSearchQuery, setTagSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Tag[]>([]);
+  const [subscribedTags, setSubscribedTags] = useState<string[]>([]);
+  const [customFeeds, setCustomFeeds] = useState<CustomFeed[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showCreateFeedModal, setShowCreateFeedModal] = useState(false);
+  const [editingFeed, setEditingFeed] = useState<CustomFeed | null>(null);
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+  const [popularTags, setPopularTags] = useState<Tag[]>([]);
+  const [tagMenuPosition, setTagMenuPosition] = useState<{x: number, y: number} | null>(null);
+  const [selectedTagForMenu, setSelectedTagForMenu] = useState<string | null>(null);
 
   // Load recent DMs with real-time updates
   useEffect(() => {
@@ -438,6 +478,172 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
     }));
   }, []);
 
+  // Handle tag click to show menu
+  const handleTagClick = useCallback((e: React.MouseEvent, tagId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTagMenuPosition({
+      x: rect.right + 10,
+      y: rect.top + rect.height / 2
+    });
+    setSelectedTagForMenu(tagId);
+  }, []);
+
+  // Handle tag view action
+  const handleTagView = useCallback(() => {
+    if (selectedTagForMenu && onTagSelect) {
+      onTagSelect(selectedTagForMenu);
+      setTagMenuPosition(null);
+      setSelectedTagForMenu(null);
+    }
+  }, [selectedTagForMenu, onTagSelect]);
+
+  // Handle tag unsubscribe action
+  const handleTagUnsubscribe = useCallback(async () => {
+    if (!selectedTagForMenu || !user?.uid) return;
+
+    try {
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        subscribedTags: arrayRemove(selectedTagForMenu)
+      });
+      
+      setTagMenuPosition(null);
+      setSelectedTagForMenu(null);
+    } catch (error) {
+      console.error("Error unsubscribing from tag:", error);
+    }
+  }, [selectedTagForMenu, user?.uid]);
+
+  // Close tag menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setTagMenuPosition(null);
+      setSelectedTagForMenu(null);
+    };
+
+    if (tagMenuPosition) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [tagMenuPosition]);
+
+  // Load popular tags for autocomplete suggestions
+  useEffect(() => {
+    const loadPopularTags = async () => {
+      try {
+        const results = await searchTags("", 20); // Get top 20 popular tags
+        
+        const formattedResults: Tag[] = results.map((tag: any) => ({
+          id: tag.normalizedName,
+          name: tag.name,
+          count: tag.count,
+        }));
+
+        setPopularTags(formattedResults);
+      } catch (error) {
+        console.error("Error loading popular tags:", error);
+      }
+    };
+
+    loadPopularTags();
+  }, []);
+
+  // Tag search functionality - now uses tags collection
+  useEffect(() => {
+    if (!tagSearchQuery.trim()) {
+      setSearchResults(popularTags.slice(0, 8)); // Show popular tags when no query
+      return;
+    }
+
+    const performTagSearch = async () => {
+      setIsSearching(true);
+      try {
+        const results = await searchTags(tagSearchQuery, 10);
+        
+        // Convert to the format expected by the UI
+        const formattedResults: Tag[] = results.map((tag: any) => ({
+          id: tag.normalizedName,
+          name: tag.name,
+          count: tag.count,
+        }));
+
+        setSearchResults(formattedResults);
+      } catch (error) {
+        console.error("Error searching tags:", error);
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    const debounceTimer = setTimeout(performTagSearch, 300);
+    return () => clearTimeout(debounceTimer);
+  }, [tagSearchQuery, popularTags]);
+
+  // Load user's subscribed tags and custom feeds
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    // Load subscribed tags
+    const userDocRef = doc(db, "users", user.uid);
+    const unsubscribeUser = onSnapshot(userDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setSubscribedTags(data.subscribedTags || []);
+      }
+    });
+
+    // Load custom feeds
+    const feedsQuery = query(
+      collection(db, "users", user.uid, "feeds"),
+      orderBy("name")
+    );
+    
+    const unsubscribeFeeds = onSnapshot(feedsQuery, (snapshot) => {
+      const feeds: CustomFeed[] = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      } as CustomFeed));
+      setCustomFeeds(feeds);
+    });
+
+    return () => {
+      unsubscribeUser();
+      unsubscribeFeeds();
+    };
+  }, [user?.uid]);
+
+  // Subscribe to tag
+  const subscribeToTag = async (tagId: string) => {
+    if (!user?.uid) return;
+
+    try {
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        subscribedTags: arrayUnion(tagId.toLowerCase()),
+      });
+    } catch (error) {
+      console.error("Error subscribing to tag:", error);
+    }
+  };
+
+  // Unsubscribe from tag
+  const unsubscribeFromTag = async (tagId: string) => {
+    if (!user?.uid) return;
+
+    try {
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        subscribedTags: arrayRemove(tagId.toLowerCase()),
+      });
+    } catch (error) {
+      console.error("Error unsubscribing from tag:", error);
+    }
+  };
+
   const renderFriendsSection = (
     title: string,
     friendsList: (Friend | RecentDM)[],
@@ -671,58 +877,170 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
                 <h2 className="font-black text-lg uppercase text-black dark:text-white">
                   Social
                 </h2>
-                <button className="w-8 h-8 bg-purple-400 dark:bg-purple-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center">
-                  <FiEdit size={16} className="text-black dark:text-white" />
-                </button>
-              </div>
-
-              {/* Search Bar */}
-              <div className="mb-4">
-                <input
-                  type="text"
-                  placeholder="Search users or tags..."
-                  className="w-full px-3 py-2 border-2 border-black dark:border-gray-600 bg-white dark:bg-gray-700 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:focus:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] transition-all"
-                />
-              </div>
-
-              {/* Performance Test Button */}
-              <div className="mb-4">
-                <button
-                  onClick={async () => {
-                    console.log("🔧 Running performance diagnostics...");
-                    console.log("System info:", getPerformanceDiagnostics());
-                    const result = await testFirestoreConnection();
-                    
-                    if (result.success) {
-                      alert(`Connection Test Results:\n\nRead: ${result.readLatency.toFixed(2)}ms\nWrite: ${result.writeLatency.toFixed(2)}ms\nDelete: ${result.deleteLatency.toFixed(2)}ms\nTotal: ${result.totalLatency.toFixed(2)}ms\n\n${result.totalLatency > 2000 ? '⚠️ Slow connection detected!' : '✅ Connection looks good!'}`);
-                    } else {
-                      alert(`Connection Test Failed!\n\nError: ${result.error}\n\nCheck console for details.`);
-                    }
-                  }}
-                  className="w-full px-3 py-2 bg-orange-400 dark:bg-orange-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-bold text-black dark:text-white text-sm"
+                <button 
+                  onClick={onCreatePost}
+                  className="w-8 h-8 bg-purple-400 dark:bg-purple-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+                  title="Create Post"
                 >
-                  🧪 Test DB Performance
+                  <FiEdit3 size={16} className="text-black dark:text-white" />
                 </button>
               </div>
 
-              {/* Public Rooms Section */}
-              <div className="mb-6">
-                <h3 className="font-bold text-sm text-gray-700 dark:text-gray-300 uppercase mb-2">
-                  Public Rooms
-                </h3>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  Browse public rooms...
+              {/* Tag Search Bar */}
+              <div className="mb-4 relative">
+                <div className="relative">
+                  <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" size={16} />
+                  <input
+                    type="text"
+                    value={tagSearchQuery}
+                    onChange={(e) => setTagSearchQuery(e.target.value)}
+                    onFocus={() => setShowTagSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowTagSuggestions(false), 200)}
+                    placeholder="Search tags..."
+                    className="w-full pl-10 pr-3 py-2 border-2 border-black dark:border-gray-600 bg-white dark:bg-gray-700 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:focus:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] transition-all"
+                  />
                 </div>
+                
+                {/* Search Results Dropdown */}
+                {showTagSuggestions && searchResults.length > 0 && (
+                  <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-800 border-2 border-black dark:border-gray-600 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(55,65,81,1)] max-h-48 overflow-y-auto z-10">
+                    {searchResults.map((tag) => (
+                      <div
+                        key={tag.id}
+                        className="flex items-center justify-between px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <FiHash size={14} className="text-gray-500" />
+                          <span className="text-sm font-medium text-black dark:text-white">{tag.name}</span>
+                          {tag.count && (
+                            <span className="text-xs text-gray-500">({tag.count} posts)</span>
+                          )}
+                        </div>
+                        <button
+                          onClick={async () => {
+                            await subscribeToTag(tag.id);
+                            setTagSearchQuery("");
+                            setShowTagSuggestions(false);
+                          }}
+                          className="w-6 h-6 bg-green-400 dark:bg-green-500 border border-black dark:border-gray-600 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] dark:shadow-[1px_1px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+                          title="Subscribe to tag"
+                          disabled={subscribedTags.includes(tag.id)}
+                        >
+                          <FiPlus size={12} className="text-black dark:text-white" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              {/* Subscription Feed */}
-              <div>
-                <h3 className="font-bold text-sm text-gray-700 dark:text-gray-300 uppercase mb-2">
-                  Your Feed
-                </h3>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  No posts yet. Subscribe to users or tags to see content here.
+              {/* Feeds Section */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <button
+                    onClick={() => toggleSection("feeds")}
+                    className="flex items-center gap-2 text-sm font-bold text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white transition-colors uppercase"
+                  >
+                    {expandedSections.feeds ? (
+                      <FiChevronDown size={12} />
+                    ) : (
+                      <FiChevronRight size={12} />
+                    )}
+                    Feeds
+                  </button>
+                  <button
+                    onClick={() => setShowCreateFeedModal(true)}
+                    className="w-5 h-5 bg-blue-400 dark:bg-blue-500 border border-black dark:border-gray-600 shadow-[1px_1px_0px_0px_rgba(0,0,0,1)] dark:shadow-[1px_1px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+                    title="Create new feed"
+                  >
+                    <FiPlus size={10} className="text-black dark:text-white" />
+                  </button>
                 </div>
+
+                {expandedSections.feeds && (
+                  <div className="space-y-2 ml-4">
+                    {/* All Feed - Non-editable */}
+                    <div 
+                      onClick={() => onFeedSelect?.({id: "all", name: "All", tags: []})}
+                      className={`flex items-center justify-between px-3 py-2 border-2 cursor-pointer transition-colors ${
+                        selectedFeed?.id === "all" 
+                          ? "bg-blue-200 dark:bg-blue-800 border-blue-500 dark:border-blue-400" 
+                          : "bg-gray-100 dark:bg-gray-700 border-black dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600"
+                      }`}
+                    >
+                      <span className="text-sm font-medium text-black dark:text-white">All</span>
+                    </div>
+                    
+                    {/* Custom Feeds */}
+                    {customFeeds.map((feed) => (
+                      <div
+                        key={feed.id}
+                        onClick={() => onFeedSelect?.(feed)}
+                        className={`flex items-center justify-between px-3 py-2 border-2 cursor-pointer transition-colors ${
+                          selectedFeed?.id === feed.id 
+                            ? "bg-blue-200 dark:bg-blue-800 border-blue-500 dark:border-blue-400" 
+                            : "border-transparent hover:bg-gray-100 dark:hover:bg-gray-700 hover:border-black dark:hover:border-gray-600"
+                        }`}
+                      >
+                        <span className="text-sm font-medium text-black dark:text-white">{feed.name}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingFeed(feed);
+                          }}
+                          className="opacity-0 hover:opacity-100 transition-opacity"
+                        >
+                          <FiEdit size={14} className="text-gray-600 dark:text-gray-400" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Tags Section */}
+              <div>
+                <button
+                  onClick={() => toggleSection("tags")}
+                  className="flex items-center gap-2 text-sm font-bold text-gray-700 dark:text-gray-300 hover:text-black dark:hover:text-white transition-colors uppercase mb-3"
+                >
+                  {expandedSections.tags ? (
+                    <FiChevronDown size={12} />
+                  ) : (
+                    <FiChevronRight size={12} />
+                  )}
+                  Subscribed Tags ({subscribedTags.length})
+                </button>
+
+                {expandedSections.tags && (
+                  <div className="space-y-2 ml-4">
+                    {subscribedTags.length === 0 ? (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+                        No subscribed tags yet
+                      </p>
+                    ) : (
+                      subscribedTags.map((tagId) => {
+                        const isHighlighted = selectedFeed && selectedFeed.id !== "all" && selectedFeed.tags.includes(tagId);
+                        return (
+                          <div
+                            key={tagId}
+                            onClick={(e) => handleTagClick(e, tagId)}
+                            className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors border-2 ${
+                              isHighlighted 
+                                ? "bg-yellow-200 dark:bg-yellow-800 border-yellow-500 dark:border-yellow-400" 
+                                : "border-transparent hover:bg-gray-100 dark:hover:bg-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                            }`}
+                          >
+                            <FiHash size={14} className="text-gray-500" />
+                            <span className="text-sm font-medium text-black dark:text-white">
+                              {tagId}
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -794,6 +1112,44 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
             )}
           </div>
         </div>
+      )}
+
+      {/* Tag Menu Popup */}
+      {tagMenuPosition && selectedTagForMenu && (
+        <div
+          className="fixed z-50 bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(55,65,81,1)] p-2"
+          style={{
+            left: tagMenuPosition.x,
+            top: tagMenuPosition.y - 40, // Center vertically
+          }}
+        >
+          <div className="flex flex-col space-y-1">
+            <button
+              onClick={handleTagView}
+              className="px-3 py-2 text-sm font-medium text-black dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 border-2 border-transparent hover:border-black dark:hover:border-gray-600 transition-all text-left"
+            >
+              View Posts
+            </button>
+            <button
+              onClick={handleTagUnsubscribe}
+              className="px-3 py-2 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900 border-2 border-transparent hover:border-red-500 dark:hover:border-red-400 transition-all text-left"
+            >
+              Unsubscribe
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Feed Management Modal */}
+      {(showCreateFeedModal || editingFeed) && user && (
+        <FeedModal
+          user={user}
+          feed={editingFeed}
+          onClose={() => {
+            setShowCreateFeedModal(false);
+            setEditingFeed(null);
+          }}
+        />
       )}
     </div>
   );

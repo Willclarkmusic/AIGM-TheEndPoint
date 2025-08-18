@@ -6,6 +6,7 @@ import { db, auth } from "../firebase/config";
 import ServerBar from "./ServerBar";
 import InfoBar from "./InfoBar";
 import ActionWindow from "./ActionWindow";
+import RightSidebar from "./RightSidebar";
 import MobileHeader from "./MobileHeader";
 import MobileFooter from "./MobileFooter";
 import MobileServerBar from "./MobileServerBar";
@@ -23,6 +24,8 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
   const { theme, toggleTheme } = useTheme();
   const [serverBarWidth, setServerBarWidth] = useState(64); // Default 64px (w-16)
   const [infoBarWidth, setInfoBarWidth] = useState(240);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(320);
+  const [showRightSidebar, setShowRightSidebar] = useState(false);
   const [selectedServer, setSelectedServer] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<"friends" | "feed" | "invites">("friends");
   const [userStatus, setUserStatus] = useState<string>("online");
@@ -44,6 +47,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
 
   const isResizingServer = useRef(false);
   const isResizingInfo = useRef(false);
+  const isResizingRight = useRef(false);
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Server management states
@@ -73,6 +77,14 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
     name: string;
     participants: string[];
   } | null>(null);
+
+  // Feed and tag states
+  const [selectedFeed, setSelectedFeed] = useState<{
+    id: string;
+    name: string;
+    tags: string[];
+  } | null>(null);
+  const [selectedFilterTag, setSelectedFilterTag] = useState<string | null>(null);
 
   // Update user presence on activity
   const updatePresence = async () => {
@@ -411,6 +423,36 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
     }
   };
 
+  // Handle feed selection
+  const handleFeedSelect = (feed: { id: string; name: string; tags: string[] }) => {
+    setSelectedFeed(feed);
+    setSelectedFilterTag(null); // Clear single tag filter when selecting feed
+    setSelectedDM(null); // Close DM if open
+    setSelectedRoom(null); // Close room if open  
+    setSelectedTab("feed"); // Switch to feed tab
+    setShowFriendSearch(false);
+    setShowServerSettingsView(false);
+    setShowMobileSidebar(false);
+  };
+
+  // Handle single tag selection
+  const handleTagSelect = (tag: string) => {
+    setSelectedFilterTag(tag);
+    setSelectedFeed(null); // Clear feed filter when selecting single tag
+    setSelectedDM(null); // Close DM if open
+    setSelectedRoom(null); // Close room if open
+    setSelectedTab("feed"); // Switch to feed tab
+    setShowFriendSearch(false);
+    setShowServerSettingsView(false);
+    setShowMobileSidebar(false);
+  };
+
+  // Handle back from feed/tag view
+  const handleBackFromFeed = () => {
+    setSelectedFeed(null);
+    setSelectedFilterTag(null);
+  };
+
   // Handle resizing of ServerBar
   const handleServerMouseDown = (e: React.MouseEvent) => {
     isResizingServer.current = true;
@@ -420,6 +462,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
   // Handle resizing of InfoBar
   const handleInfoMouseDown = (e: React.MouseEvent) => {
     isResizingInfo.current = true;
+    e.preventDefault();
+  };
+
+  // Handle resizing of RightSidebar
+  const handleRightMouseDown = (e: React.MouseEvent) => {
+    isResizingRight.current = true;
     e.preventDefault();
   };
 
@@ -436,12 +484,18 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
         if (newWidth >= 180 && newWidth <= 400) {
           setInfoBarWidth(newWidth);
         }
+      } else if (isResizingRight.current) {
+        const newWidth = window.innerWidth - e.clientX;
+        if (newWidth >= 280 && newWidth <= 500) {
+          setRightSidebarWidth(newWidth);
+        }
       }
     };
 
     const handleMouseUp = () => {
       isResizingServer.current = false;
       isResizingInfo.current = false;
+      isResizingRight.current = false;
     };
 
     document.addEventListener("mousemove", handleMouseMove);
@@ -451,7 +505,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [serverBarWidth]);
+  }, [serverBarWidth, rightSidebarWidth]);
 
   // Mobile footer handlers
   const handleMobileFooterClick = (tab: "profile" | "settings") => {
@@ -550,6 +604,13 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               onAddFriendClick={handleAddFriendClick}
               onFriendClick={handleFriendClick}
               user={user}
+              onCreatePost={() => {
+                // This will be handled by ActionWindow's create post modal
+                setShowMobileSidebar(false);
+              }}
+              onFeedSelect={handleFeedSelect}
+              onTagSelect={handleTagSelect}
+              selectedFeed={selectedFeed}
             />
           </div>
         </div>
@@ -611,6 +672,13 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               onAddFriendClick={handleAddFriendClick}
               onFriendClick={handleFriendClick}
               user={user}
+              onCreatePost={() => {
+                // This will be handled by ActionWindow's create post modal
+                setShowMobileSidebar(false);
+              }}
+              onFeedSelect={handleFeedSelect}
+              onTagSelect={handleTagSelect}
+              selectedFeed={selectedFeed}
             />
 
             {/* Resize Handle for InfoBar - Desktop only */}
@@ -903,9 +971,31 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               onBackFromDM={() => {
                 setSelectedDM(null);
               }}
+              onToggleRightSidebar={() => setShowRightSidebar(!showRightSidebar)}
+              selectedFeed={selectedFeed}
+              selectedFilterTag={selectedFilterTag}
+              onBackFromFeed={handleBackFromFeed}
             />
           )}
         </div>
+
+        {/* Right Sidebar - Only visible on desktop */}
+        {showRightSidebar && (
+          <div className="hidden md:flex">
+            {/* Resize Handle for RightSidebar */}
+            <div
+              className="w-1 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 cursor-col-resize transition-colors"
+              onMouseDown={handleRightMouseDown}
+            />
+            
+            <RightSidebar
+              width={rightSidebarWidth}
+              isCollapsed={false}
+              onToggleCollapse={() => setShowRightSidebar(false)}
+              user={user}
+            />
+          </div>
+        )}
       </div>
 
       {/* Modals */}

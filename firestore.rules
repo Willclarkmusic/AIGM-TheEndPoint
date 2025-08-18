@@ -128,6 +128,18 @@ service cloud.firestore {
                            resource.data.author == request.auth.uid;
     }
 
+    // TAGS COLLECTION - Read-only for users, write-only for Cloud Functions
+    match /tags/{tagId} {
+      allow read: if isAuthenticated();
+      // Only Cloud Functions can write to maintain data integrity
+      allow write: if false;
+    }
+
+    // USER FEEDS SUBCOLLECTION - Users can manage their own feeds
+    match /users/{userId}/feeds/{feedId} {
+      allow read, write: if isOwner(userId);
+    }
+
     // FRIEND REQUESTS COLLECTION
     match /friend_requests/{requestId} {
       allow read, write: if isAuthenticated();
