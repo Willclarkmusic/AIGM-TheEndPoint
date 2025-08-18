@@ -78,6 +78,14 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
     participants: string[];
   } | null>(null);
 
+  // Feed and tag states
+  const [selectedFeed, setSelectedFeed] = useState<{
+    id: string;
+    name: string;
+    tags: string[];
+  } | null>(null);
+  const [selectedFilterTag, setSelectedFilterTag] = useState<string | null>(null);
+
   // Update user presence on activity
   const updatePresence = async () => {
     if (user && userStatus === "online") {
@@ -415,6 +423,36 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
     }
   };
 
+  // Handle feed selection
+  const handleFeedSelect = (feed: { id: string; name: string; tags: string[] }) => {
+    setSelectedFeed(feed);
+    setSelectedFilterTag(null); // Clear single tag filter when selecting feed
+    setSelectedDM(null); // Close DM if open
+    setSelectedRoom(null); // Close room if open  
+    setSelectedTab("feed"); // Switch to feed tab
+    setShowFriendSearch(false);
+    setShowServerSettingsView(false);
+    setShowMobileSidebar(false);
+  };
+
+  // Handle single tag selection
+  const handleTagSelect = (tag: string) => {
+    setSelectedFilterTag(tag);
+    setSelectedFeed(null); // Clear feed filter when selecting single tag
+    setSelectedDM(null); // Close DM if open
+    setSelectedRoom(null); // Close room if open
+    setSelectedTab("feed"); // Switch to feed tab
+    setShowFriendSearch(false);
+    setShowServerSettingsView(false);
+    setShowMobileSidebar(false);
+  };
+
+  // Handle back from feed/tag view
+  const handleBackFromFeed = () => {
+    setSelectedFeed(null);
+    setSelectedFilterTag(null);
+  };
+
   // Handle resizing of ServerBar
   const handleServerMouseDown = (e: React.MouseEvent) => {
     isResizingServer.current = true;
@@ -566,6 +604,13 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               onAddFriendClick={handleAddFriendClick}
               onFriendClick={handleFriendClick}
               user={user}
+              onCreatePost={() => {
+                // This will be handled by ActionWindow's create post modal
+                setShowMobileSidebar(false);
+              }}
+              onFeedSelect={handleFeedSelect}
+              onTagSelect={handleTagSelect}
+              selectedFeed={selectedFeed}
             />
           </div>
         </div>
@@ -627,6 +672,13 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               onAddFriendClick={handleAddFriendClick}
               onFriendClick={handleFriendClick}
               user={user}
+              onCreatePost={() => {
+                // This will be handled by ActionWindow's create post modal
+                setShowMobileSidebar(false);
+              }}
+              onFeedSelect={handleFeedSelect}
+              onTagSelect={handleTagSelect}
+              selectedFeed={selectedFeed}
             />
 
             {/* Resize Handle for InfoBar - Desktop only */}
@@ -920,6 +972,9 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
                 setSelectedDM(null);
               }}
               onToggleRightSidebar={() => setShowRightSidebar(!showRightSidebar)}
+              selectedFeed={selectedFeed}
+              selectedFilterTag={selectedFilterTag}
+              onBackFromFeed={handleBackFromFeed}
             />
           )}
         </div>

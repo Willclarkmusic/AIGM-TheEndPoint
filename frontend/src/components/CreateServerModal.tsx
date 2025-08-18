@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { FiX, FiPlus, FiUsers, FiMail } from "react-icons/fi";
-import { collection, doc, setDoc, serverTimestamp, query, where, getDocs, limit, onSnapshot, deleteDoc, addDoc } from "firebase/firestore";
+import { collection, doc, setDoc, serverTimestamp, query, where, getDocs, limit, onSnapshot, deleteDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type { User } from "firebase/auth";
 

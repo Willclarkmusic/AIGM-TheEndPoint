@@ -1,8 +1,9 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import type { User } from "firebase/auth";
-import { FiHeart, FiMessageCircle, FiShare2, FiMoreHorizontal, FiExternalLink, FiDownload } from "react-icons/fi";
-import { doc, updateDoc, increment, arrayUnion, arrayRemove } from "firebase/firestore";
+import { FiHeart, FiMessageCircle, FiShare2, FiMoreHorizontal, FiExternalLink, FiDownload, FiEye, FiPlus, FiMinus } from "react-icons/fi";
+import { doc, updateDoc, increment, arrayUnion, arrayRemove, getDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
+import EditPostModal from "./EditPostModal";
 
 /**
  * Social post interface
@@ -67,9 +68,74 @@ const Post: React.FC<PostProps> = ({ post, currentUser, onUpdate, onTagClick }) 
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const [imageModalOpen, setImageModalOpen] = useState(false);
   const [hoveredImage, setHoveredImage] = useState(false);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [tagMenuPosition, setTagMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [subscribedTags, setSubscribedTags] = useState<string[]>([]);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   // Check if current user has liked the post
   const isLiked = post.likedBy.includes(currentUser.uid);
+
+  // Load user's subscribed tags
+  useEffect(() => {
+    const loadSubscribedTags = async () => {
+      try {
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          setSubscribedTags(data.subscribedTags || []);
+        }
+      } catch (error) {
+        console.error("Error loading subscribed tags:", error);
+      }
+    };
+
+    loadSubscribedTags();
+  }, [currentUser.uid]);
+
+  /**
+   * Handle tag click - show popup menu
+   */
+  const handleTagClick = (tag: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    setSelectedTag(tag);
+    setTagMenuPosition({
+      x: rect.left,
+      y: rect.bottom + 5,
+    });
+  };
+
+  /**
+   * Subscribe/Unsubscribe from tag
+   */
+  const toggleTagSubscription = async () => {
+    if (!selectedTag) return;
+
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      const tagId = selectedTag.toLowerCase();
+      
+      if (subscribedTags.includes(tagId)) {
+        // Unsubscribe
+        await updateDoc(userRef, {
+          subscribedTags: arrayRemove(tagId),
+        });
+        setSubscribedTags(prev => prev.filter(t => t !== tagId));
+      } else {
+        // Subscribe
+        await updateDoc(userRef, {
+          subscribedTags: arrayUnion(tagId),
+        });
+        setSubscribedTags(prev => [...prev, tagId]);
+      }
+    } catch (error) {
+      console.error("Error toggling tag subscription:", error);
+    }
+    
+    setSelectedTag(null);
+    setTagMenuPosition(null);
+  };
 
   /**
    * Format timestamp for display
@@ -287,7 +353,13 @@ const Post: React.FC<PostProps> = ({ post, currentUser, onUpdate, onTagClick }) 
           {showActionsMenu && (
             <div className="absolute top-10 right-0 bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(55,65,81,1)] z-10 min-w-[150px]">
               {post.authorId === currentUser.uid && (
-                <button className="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 text-black dark:text-white font-bold border-b-2 border-black dark:border-gray-600">
+                <button 
+                  onClick={() => {
+                    setShowEditModal(true);
+                    setShowActionsMenu(false);
+                  }}
+                  className="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 text-black dark:text-white font-bold border-b-2 border-black dark:border-gray-600"
+                >
                   Edit Post
                 </button>
               )}
@@ -312,7 +384,7 @@ const Post: React.FC<PostProps> = ({ post, currentUser, onUpdate, onTagClick }) 
           {post.tags.map((tag) => (
             <button
               key={tag}
-              onClick={() => onTagClick(tag)}
+              onClick={(e) => handleTagClick(tag, e)}
               className="px-3 py-1 bg-blue-400 dark:bg-blue-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all text-sm font-bold text-black dark:text-white"
             >
               #{tag}
@@ -438,6 +510,67 @@ const Post: React.FC<PostProps> = ({ post, currentUser, onUpdate, onTagClick }) 
         <div 
           className="fixed inset-0 z-0" 
           onClick={() => setShowActionsMenu(false)}
+        />
+      )}
+
+      {/* Tag Popup Menu */}
+      {selectedTag && tagMenuPosition && (
+        <>
+          <div 
+            className="fixed inset-0 z-40" 
+            onClick={() => {
+              setSelectedTag(null);
+              setTagMenuPosition(null);
+            }}
+          />
+          <div
+            className="fixed z-50 bg-white dark:bg-gray-800 border-2 border-black dark:border-gray-600 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(55,65,81,1)] py-2 min-w-[150px]"
+            style={{
+              left: `${tagMenuPosition.x}px`,
+              top: `${tagMenuPosition.y}px`,
+            }}
+          >
+            <button
+              onClick={() => {
+                onTagClick(selectedTag);
+                setSelectedTag(null);
+                setTagMenuPosition(null);
+              }}
+              className="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium text-black dark:text-white flex items-center gap-2"
+            >
+              <FiEye size={16} />
+              View
+            </button>
+            <button
+              onClick={toggleTagSubscription}
+              className="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors font-medium text-black dark:text-white flex items-center gap-2"
+            >
+              {subscribedTags.includes(selectedTag.toLowerCase()) ? (
+                <>
+                  <FiMinus size={16} />
+                  Unsubscribe
+                </>
+              ) : (
+                <>
+                  <FiPlus size={16} />
+                  Subscribe
+                </>
+              )}
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Edit Post Modal */}
+      {showEditModal && (
+        <EditPostModal
+          user={currentUser}
+          post={post}
+          onPostUpdated={(updatedPost) => {
+            onUpdate(updatedPost);
+            setShowEditModal(false);
+          }}
+          onClose={() => setShowEditModal(false)}
         />
       )}
     </article>
