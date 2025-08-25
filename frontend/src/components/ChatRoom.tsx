@@ -14,7 +14,7 @@ interface ChatRoomProps {
 
 interface RoomData {
   name: string;
-  type: "chat" | "genai" | "ai-agent";
+  type: "chat" | "genai" | "ai-agent-design";
   createdAt: any;
   createdBy: string;
 }
@@ -91,7 +91,7 @@ const ChatRoom: React.FC<ChatRoomProps> = ({
         return "#";
       case "genai":
         return "🎨";
-      case "ai-agent":
+      case "ai-agent-design":
         return "🤖";
       default:
         return "#";
@@ -132,25 +132,23 @@ const ChatRoom: React.FC<ChatRoomProps> = ({
   const canSendMessages = userRole === "owner" || userRole === "admin" || userRole === "member";
 
   return (
-    <div className="flex-1 bg-white dark:bg-gray-900 flex flex-col h-full">
-      {/* Messages Area - Takes full space */}
-      <div className="flex-1 flex flex-col min-h-0">
-        <MessageLog
+    <div className="flex-1 bg-white dark:bg-gray-900 flex flex-col h-full min-h-0">
+      <MessageLog
+        serverId={serverId}
+        roomId={roomId}
+        user={user}
+        userRole={userRole}
+      />
+      
+      {/* Message Composer - Fixed at bottom */}
+      <div className="flex-shrink-0">
+        <MessageComposer
           serverId={serverId}
           roomId={roomId}
           user={user}
-          userRole={userRole}
+          disabled={!canSendMessages}
+          roomType={roomData?.type as "chat" | "genai" | "ai-agent-design"}
         />
-        
-        {/* Message Composer - Fixed at bottom */}
-        <div className="flex-shrink-0">
-          <MessageComposer
-            serverId={serverId}
-            roomId={roomId}
-            user={user}
-            disabled={!canSendMessages}
-          />
-        </div>
       </div>
     </div>
   );

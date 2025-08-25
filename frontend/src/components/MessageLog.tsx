@@ -6,16 +6,13 @@ import {
   orderBy,
   limit,
   onSnapshot,
-  addDoc,
-  serverTimestamp,
   deleteDoc,
   doc,
-  getDoc,
   startAfter,
   getDocs,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
-import { FiTrash2, FiMoreVertical } from "react-icons/fi";
+import { FiTrash2 } from "react-icons/fi";
 
 interface Message {
   id: string;

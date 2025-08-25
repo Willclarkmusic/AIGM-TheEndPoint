@@ -2,15 +2,22 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   FiUserPlus,
   FiEdit,
+  FiEdit3,
   FiChevronDown,
   FiChevronRight,
   FiSettings,
+  FiSearch,
+  FiHash,
+  FiPlus,
 } from "react-icons/fi";
 import { FaHashtag, FaRobot, FaImage } from "react-icons/fa";
 import { collection, onSnapshot, query, orderBy, where, getDocs, limit, doc, deleteDoc, addDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type { User } from "firebase/auth";
 import { testFirestoreConnection, getPerformanceDiagnostics } from "../utils/performanceUtils";
+import { searchTags } from "../utils/migrateTags";
+import CreditDisplay from "./CreditDisplay";
+import FeedModal from "./FeedModal";
 
 interface InfoBarProps {
   width: number;
@@ -26,6 +33,12 @@ interface InfoBarProps {
   onAddFriendClick?: () => void;
   onFriendClick?: (friend: Friend) => void;
   user?: User;
+  // Social functionality props
+  selectedFeed?: { id: string; name: string; tags: string[] } | null;
+  selectedFilterTag?: string | null;
+  onCreatePost?: () => void;
+  onFeedSelect?: (feed: { id: string; name: string; tags: string[] }) => void;
+  onTagFilter?: (tag: string) => void;
 }
 
 interface Friend {
@@ -57,6 +70,20 @@ interface ServerInvite {
   status: "pending";
 }
 
+interface CustomFeed {
+  id: string;
+  name: string;
+  tags: string[];
+  userId: string;
+  createdAt: any;
+}
+
+interface Tag {
+  id: string;
+  name: string;
+  count?: number;
+}
+
 const InfoBar: React.FC<InfoBarProps> = React.memo(({
   width,
   selectedServer,
@@ -71,6 +98,11 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
   onAddFriendClick,
   onFriendClick,
   user,
+  selectedFeed,
+  selectedFilterTag,
+  onCreatePost,
+  onFeedSelect,
+  onTagFilter,
 }) => {
   const [expandedSections, setExpandedSections] = useState<
     Record<string, boolean>
@@ -80,13 +112,15 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
     idle: true,
     away: false,
     rooms: true,
+    feeds: true,
+    tags: true,
   });
 
   const [rooms, setRooms] = useState<
     Array<{
       id: string;
       name: string;
-      type: "chat" | "genai" | "ai-agent";
+      type: "chat" | "genai" | "ai-agent-design";
       icon?: string;
     }>
   >([]);
@@ -105,6 +139,17 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
   
   const [friendRequestCount, setFriendRequestCount] = useState(0);
   const [serverInvites, setServerInvites] = useState<ServerInvite[]>([]);
+  
+  // Social feed state
+  const [customFeeds, setCustomFeeds] = useState<CustomFeed[]>([]);
+  const [subscribedTags, setSubscribedTags] = useState<Tag[]>([]);
+  const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [tagSearchInput, setTagSearchInput] = useState("");
+  const [filteredTags, setFilteredTags] = useState<Tag[]>([]);
+  const [showFeedModal, setShowFeedModal] = useState(false);
+  const [editingFeed, setEditingFeed] = useState<CustomFeed | null>(null);
+  const [selectedTagForMenu, setSelectedTagForMenu] = useState<string | null>(null);
+  const [tagMenuPosition, setTagMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [recentDMs, setRecentDMs] = useState<RecentDM[]>([]);
   const [dmLoadLimit, setDmLoadLimit] = useState(10);
   const [hasMoreDMs, setHasMoreDMs] = useState(false);
@@ -411,7 +456,7 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
         return <FaHashtag size={14} />;
       case "genai":
         return <FaImage size={14} />;
-      case "ai-agent":
+      case "ai-agent-design":
         return <FaRobot size={14} />;
       default:
         return <FaHashtag size={14} />;
@@ -437,6 +482,162 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
       [section]: !prev[section],
     }));
   }, []);
+
+  // Social functionality
+  
+  // Load user's custom feeds
+  useEffect(() => {
+    if (!user?.uid) {
+      setCustomFeeds([]);
+      return;
+    }
+
+    const feedsRef = collection(db, `users/${user.uid}/custom_feeds`);
+    const feedsQuery = query(feedsRef, orderBy("createdAt", "desc"));
+
+    const unsubscribe = onSnapshot(feedsQuery, (snapshot) => {
+      const feeds: CustomFeed[] = [];
+      snapshot.forEach((doc) => {
+        feeds.push({
+          id: doc.id,
+          ...doc.data()
+        } as CustomFeed);
+      });
+      setCustomFeeds(feeds);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
+
+  // Load user's subscribed tags
+  useEffect(() => {
+    if (!user?.uid || allTags.length === 0) {
+      setSubscribedTags([]);
+      return;
+    }
+
+    const userDocRef = doc(db, "users", user.uid);
+    const unsubscribe = onSnapshot(userDocRef, (doc) => {
+      if (doc.exists()) {
+        const data = doc.data();
+        const subscribedTagIds = data.subscribedTags || [];
+        
+        // Convert tag IDs to Tag objects with data from allTags
+        const subscribedTagObjects = subscribedTagIds
+          .map((tagId: string) => allTags.find(tag => tag.id === tagId))
+          .filter(Boolean) as Tag[];
+        
+        setSubscribedTags(subscribedTagObjects);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid, allTags]);
+
+  // Load all tags for search functionality
+  useEffect(() => {
+    const loadAllTags = async () => {
+      try {
+        const results = await searchTags("", 100); // Get top 100 tags
+        const tags: Tag[] = results.map((tag: any) => ({
+          id: tag.normalizedName,
+          name: tag.name,
+          count: tag.count,
+        }));
+        setAllTags(tags);
+      } catch (error) {
+        console.error("Error loading tags:", error);
+        setAllTags([]);
+      }
+    };
+
+    loadAllTags();
+  }, []);
+
+  // Filter tags based on search input
+  useEffect(() => {
+    if (!tagSearchInput.trim()) {
+      setFilteredTags([]);
+      return;
+    }
+
+    const filtered = allTags.filter(tag =>
+      tag.name.toLowerCase().includes(tagSearchInput.toLowerCase()) &&
+      !subscribedTags.some(subTag => subTag.id === tag.id)
+    );
+    setFilteredTags(filtered.slice(0, 10));
+  }, [tagSearchInput, allTags, subscribedTags]);
+
+  // Subscribe to tag
+  const subscribeToTag = async (tagId: string) => {
+    if (!user?.uid) return;
+
+    try {
+      const userRef = doc(db, "users", user.uid);
+      const currentTagIds = subscribedTags.map(tag => tag.id);
+      await setDoc(userRef, {
+        subscribedTags: [...currentTagIds, tagId.toLowerCase()]
+      }, { merge: true });
+    } catch (error) {
+      console.error("Error subscribing to tag:", error);
+    }
+  };
+
+  // Handle tag click for menu
+  const handleTagClick = useCallback((event: React.MouseEvent, tagId: string) => {
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    setSelectedTagForMenu(tagId);
+    setTagMenuPosition({
+      x: rect.left,
+      y: rect.bottom + 5,
+    });
+  }, []);
+
+  // Handle tag view
+  const handleTagView = () => {
+    if (selectedTagForMenu && onTagFilter) {
+      onTagFilter(selectedTagForMenu);
+      onContentItemClick?.();
+    }
+    setSelectedTagForMenu(null);
+    setTagMenuPosition(null);
+  };
+
+  // Handle tag unsubscribe  
+  const handleTagUnsubscribe = async () => {
+    if (!selectedTagForMenu || !user?.uid) return;
+
+    try {
+      const userRef = doc(db, "users", user.uid);
+      const newSubscribedTagIds = subscribedTags
+        .filter(tag => tag.id !== selectedTagForMenu)
+        .map(tag => tag.id);
+      await setDoc(userRef, {
+        subscribedTags: newSubscribedTagIds
+      }, { merge: true });
+    } catch (error) {
+      console.error("Error unsubscribing from tag:", error);
+    }
+    
+    setSelectedTagForMenu(null);
+    setTagMenuPosition(null);
+  };
+
+  // Close tag menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (selectedTagForMenu) {
+        setSelectedTagForMenu(null);
+        setTagMenuPosition(null);
+      }
+    };
+
+    if (selectedTagForMenu) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [selectedTagForMenu]);
 
   const renderFriendsSection = (
     title: string,
@@ -576,6 +777,13 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
           {selectedTab === "friends" ? (
             // Friends Tab Content
             <div>
+              {/* Credit Display */}
+              {user && (
+                <div className="mb-4 p-3 bg-gray-100 dark:bg-gray-700 border-2 border-black dark:border-gray-600">
+                  <CreditDisplay user={user} />
+                </div>
+              )}
+
               {/* Friends Header */}
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-black text-lg uppercase text-black dark:text-white">
@@ -666,64 +874,194 @@ const InfoBar: React.FC<InfoBarProps> = React.memo(({
           ) : (
             // Social Feed Tab Content
             <div>
-              {/* Feed Header */}
+              {/* Feed Header with Create Post */}
               <div className="flex items-center justify-between mb-4">
                 <h2 className="font-black text-lg uppercase text-black dark:text-white">
                   Social
                 </h2>
-                <button className="w-8 h-8 bg-purple-400 dark:bg-purple-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center">
-                  <FiEdit size={16} className="text-black dark:text-white" />
-                </button>
-              </div>
-
-              {/* Search Bar */}
-              <div className="mb-4">
-                <input
-                  type="text"
-                  placeholder="Search users or tags..."
-                  className="w-full px-3 py-2 border-2 border-black dark:border-gray-600 bg-white dark:bg-gray-700 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:focus:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] transition-all"
-                />
-              </div>
-
-              {/* Performance Test Button */}
-              <div className="mb-4">
-                <button
-                  onClick={async () => {
-                    console.log("🔧 Running performance diagnostics...");
-                    console.log("System info:", getPerformanceDiagnostics());
-                    const result = await testFirestoreConnection();
-                    
-                    if (result.success) {
-                      alert(`Connection Test Results:\n\nRead: ${result.readLatency.toFixed(2)}ms\nWrite: ${result.writeLatency.toFixed(2)}ms\nDelete: ${result.deleteLatency.toFixed(2)}ms\nTotal: ${result.totalLatency.toFixed(2)}ms\n\n${result.totalLatency > 2000 ? '⚠️ Slow connection detected!' : '✅ Connection looks good!'}`);
-                    } else {
-                      alert(`Connection Test Failed!\n\nError: ${result.error}\n\nCheck console for details.`);
-                    }
-                  }}
-                  className="w-full px-3 py-2 bg-orange-400 dark:bg-orange-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all font-bold text-black dark:text-white text-sm"
+                <button 
+                  onClick={onCreatePost}
+                  className="w-8 h-8 bg-purple-400 dark:bg-purple-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+                  title="Create Post"
                 >
-                  🧪 Test DB Performance
+                  <FiPlus size={16} className="text-black dark:text-white" />
                 </button>
               </div>
 
-              {/* Public Rooms Section */}
+              {/* Tag Search Bar */}
+              <div className="mb-4 relative">
+                <div className="relative">
+                  <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" size={16} />
+                  <input
+                    type="text"
+                    value={tagSearchInput}
+                    onChange={(e) => setTagSearchInput(e.target.value)}
+                    placeholder="Search tags..."
+                    className="w-full pl-10 pr-4 py-2 border-2 border-black dark:border-gray-600 bg-white dark:bg-gray-700 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:focus:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] transition-all"
+                  />
+                </div>
+                
+                {/* Tag Suggestions */}
+                {tagSearchInput && filteredTags.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-10 bg-white dark:bg-gray-700 border-2 border-black dark:border-gray-600 border-t-0 max-h-40 overflow-y-auto">
+                    {filteredTags.slice(0, 10).map((tag) => (
+                      <button
+                        key={tag.id}
+                        onClick={() => {
+                          onTagFilter?.(tag.id);
+                          setTagSearchInput("");
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center justify-between transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <FaHashtag size={12} className="text-gray-500" />
+                          <span className="text-sm font-medium text-black dark:text-white">{tag.name}</span>
+                        </div>
+                        <span className="text-xs text-gray-500">{tag.count || 0}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Feeds Section */}
               <div className="mb-6">
-                <h3 className="font-bold text-sm text-gray-700 dark:text-gray-300 uppercase mb-2">
-                  Public Rooms
-                </h3>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  Browse public rooms...
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-bold text-sm text-gray-700 dark:text-gray-300 uppercase">
+                    Feeds
+                  </h3>
+                  <button
+                    onClick={() => setShowFeedModal(true)}
+                    className="w-6 h-6 bg-green-400 dark:bg-green-500 border-2 border-black dark:border-gray-600 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center justify-center"
+                    title="Create Feed"
+                  >
+                    <FiPlus size={12} className="text-black dark:text-white" />
+                  </button>
+                </div>
+                
+                <div className="space-y-2">
+                  {customFeeds.map((feed) => (
+                    <div
+                      key={feed.id}
+                      className={`px-3 py-2 border-2 border-black dark:border-gray-600 cursor-pointer transition-all ${
+                        selectedFeed?.id === feed.id
+                          ? "bg-blue-400 dark:bg-blue-500 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)]"
+                          : "bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600"
+                      }`}
+                      onClick={() => onFeedSelect?.(feed)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-sm text-black dark:text-white">
+                          {feed.name}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingFeed(feed);
+                            setShowFeedModal(true);
+                          }}
+                          className="text-gray-500 hover:text-black dark:hover:text-white transition-colors"
+                        >
+                          <FiEdit3 size={12} />
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {feed.tags.slice(0, 3).map((tagId) => {
+                          const tag = allTags.find(t => t.id === tagId);
+                          return (
+                            <span
+                              key={tagId}
+                              className="text-xs bg-gray-200 dark:bg-gray-600 px-1 py-0.5 border border-black dark:border-gray-500"
+                            >
+                              #{tag?.name || tagId}
+                            </span>
+                          );
+                        })}
+                        {feed.tags.length > 3 && (
+                          <span className="text-xs text-gray-500">+{feed.tags.length - 3}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {customFeeds.length === 0 && (
+                    <div className="text-center py-4 text-gray-500 dark:text-gray-400 text-sm">
+                      No custom feeds yet. Create one!
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Subscription Feed */}
+              {/* Tags Section */}
               <div>
-                <h3 className="font-bold text-sm text-gray-700 dark:text-gray-300 uppercase mb-2">
-                  Your Feed
+                <h3 className="font-bold text-sm text-gray-700 dark:text-gray-300 uppercase mb-3">
+                  Subscribed Tags
                 </h3>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                  No posts yet. Subscribe to users or tags to see content here.
+                
+                <div className="space-y-1">
+                  {subscribedTags.map((tag) => (
+                    <div
+                      key={tag.id}
+                      className={`flex items-center justify-between px-3 py-2 border-2 border-black dark:border-gray-600 cursor-pointer transition-all ${
+                        selectedFilterTag === tag.id
+                          ? "bg-yellow-400 dark:bg-yellow-500 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(55,65,81,1)]"
+                          : "bg-white dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600"
+                      }`}
+                      onClick={(e) => handleTagClick(e, tag.id)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <FaHashtag size={12} className="text-gray-500" />
+                        <span className="text-sm font-medium text-black dark:text-white">
+                          {tag.name}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500">{tag.count || 0}</span>
+                    </div>
+                  ))}
+                  
+                  {subscribedTags.length === 0 && (
+                    <div className="text-center py-4 text-gray-500 dark:text-gray-400 text-sm">
+                      No subscribed tags. Search and subscribe above!
+                    </div>
+                  )}
                 </div>
               </div>
+
+              {/* Tag Menu */}
+              {selectedTagForMenu && tagMenuPosition && (
+                <div
+                  className="fixed z-50 bg-white dark:bg-gray-800 border-4 border-black dark:border-gray-600 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(55,65,81,1)] py-2 min-w-[120px]"
+                  style={{
+                    left: tagMenuPosition.x,
+                    top: tagMenuPosition.y,
+                  }}
+                >
+                  <button
+                    onClick={() => onTagFilter?.(selectedTagForMenu)}
+                    className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-medium text-black dark:text-white transition-colors"
+                  >
+                    View Posts
+                  </button>
+                  <button
+                    onClick={handleTagUnsubscribe}
+                    className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-medium text-red-600 dark:text-red-400 transition-colors"
+                  >
+                    Unsubscribe
+                  </button>
+                </div>
+              )}
+
+              {/* Feed Modal */}
+              {showFeedModal && user && (
+                <FeedModal
+                  user={user}
+                  feed={editingFeed}
+                  onClose={() => {
+                    setShowFeedModal(false);
+                    setEditingFeed(null);
+                  }}
+                />
+              )}
             </div>
           )}
         </div>

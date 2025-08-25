@@ -1,6 +1,6 @@
-# Google Cloud Build configuration for React frontend deployment to Cloud Run
+# Google Cloud Build configuration for complete AIGM stack deployment
 steps:
-  # Build the Docker image with Firebase configuration
+  # Build Frontend Docker image
   - name: 'gcr.io/cloud-builders/docker'
     args: [
       'build',
@@ -13,23 +13,44 @@ steps:
       '--build-arg', 'VITE_FIREBASE_MESSAGING_SENDER_ID=${_FIREBASE_MESSAGING_SENDER_ID}',
       '--build-arg', 'VITE_FIREBASE_APP_ID=${_FIREBASE_APP_ID}',
       '--build-arg', 'VITE_FIREBASE_MEASUREMENT_ID=${_FIREBASE_MEASUREMENT_ID}',
+      '--build-arg', 'VITE_AI_SERVICE_URL=${_AI_SERVICE_URL}',
       './frontend'
     ]
-    id: 'build-image'
+    id: 'build-frontend'
 
-  # Push the image with commit SHA tag
+  # Build AI Service Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-t', 'gcr.io/$PROJECT_ID/aigm-ai-service:$COMMIT_SHA',
+      '-t', 'gcr.io/$PROJECT_ID/aigm-ai-service:latest',
+      './ai-service'
+    ]
+    id: 'build-ai-service'
+
+  # Push Frontend images (parallel)
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/aigm-frontend:$COMMIT_SHA']
-    id: 'push-sha-image'
-    waitFor: ['build-image']
+    id: 'push-frontend-sha'
+    waitFor: ['build-frontend']
 
-  # Push the latest tag
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/aigm-frontend:latest']
-    id: 'push-latest-image'
-    waitFor: ['build-image']
+    id: 'push-frontend-latest'
+    waitFor: ['build-frontend']
 
-  # Deploy to Cloud Run
+  # Push AI Service images (parallel)
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/aigm-ai-service:$COMMIT_SHA']
+    id: 'push-ai-service-sha'
+    waitFor: ['build-ai-service']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/aigm-ai-service:latest']
+    id: 'push-ai-service-latest'
+    waitFor: ['build-ai-service']
+
+  # Deploy Frontend to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args: [
@@ -49,8 +70,97 @@ steps:
       '--labels', 'app=aigm-frontend,environment=production',
       '--quiet'
     ]
-    id: 'deploy-cloud-run'
-    waitFor: ['push-sha-image']
+    id: 'deploy-frontend'
+    waitFor: ['push-frontend-sha']
+
+  # Deploy AI Service to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args: [
+      'run', 'deploy', 'aigm-ai-service',
+      '--image', 'gcr.io/$PROJECT_ID/aigm-ai-service:$COMMIT_SHA',
+      '--region', 'us-central1',
+      '--platform', 'managed',
+      '--no-allow-unauthenticated',
+      '--port', '8080',
+      '--memory', '2Gi',
+      '--cpu', '2',
+      '--min-instances', '1',
+      '--max-instances', '10',
+      '--concurrency', '80',
+      '--timeout', '300',
+      '--set-env-vars', 'ENVIRONMENT=production,GCP_PROJECT_ID=$PROJECT_ID,GCS_BUCKET_NAME=${_AI_STORAGE_BUCKET}',
+      '--set-secrets', '/secrets/gemini-api-key=gemini_api_key:latest,/secrets/stability-api-key=stability_api_key:latest',
+      '--service-account', '${_AI_SERVICE_ACCOUNT}',
+      '--labels', 'app=aigm-ai-service,environment=production',
+      '--quiet'
+    ]
+    id: 'deploy-ai-service'
+    waitFor: ['push-ai-service-sha']
+
+  # Install Firebase CLI and Node.js dependencies
+  - name: 'node:22'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        npm install -g firebase-tools
+        cd functions
+        npm ci
+        npm run build
+    id: 'prepare-firebase'
+
+  # Deploy Firebase Functions
+  - name: 'node:22'
+    entrypoint: 'bash'
+    env:
+      - 'FIREBASE_TOKEN=${_FIREBASE_TOKEN}'
+    args:
+      - '-c'
+      - |
+        npm install -g firebase-tools
+        firebase deploy --only functions --project $PROJECT_ID --token $${FIREBASE_TOKEN}
+    id: 'deploy-functions'
+    waitFor: ['prepare-firebase']
+
+  # Deploy Firestore Rules and Indexes
+  - name: 'node:22'
+    entrypoint: 'bash'
+    env:
+      - 'FIREBASE_TOKEN=${_FIREBASE_TOKEN}'
+    args:
+      - '-c'
+      - |
+        npm install -g firebase-tools
+        firebase deploy --only firestore:rules,firestore:indexes,storage --project $PROJECT_ID --token $${FIREBASE_TOKEN}
+    id: 'deploy-firestore-rules'
+    waitFor: ['prepare-firebase']
+
+  # Health check and service connectivity test
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🔍 Checking deployment health..."
+        
+        # Wait for services to be ready
+        sleep 30
+        
+        # Get service URLs
+        FRONTEND_URL=$(gcloud run services describe aigm-frontend --region=us-central1 --format='value(status.url)')
+        AI_SERVICE_URL=$(gcloud run services describe aigm-ai-service --region=us-central1 --format='value(status.url)')
+        
+        echo "✅ Frontend deployed at: $FRONTEND_URL"
+        echo "✅ AI Service deployed at: $AI_SERVICE_URL"
+        
+        # Test health endpoints
+        curl -f "$FRONTEND_URL" || echo "⚠️ Frontend health check failed"
+        curl -f "$AI_SERVICE_URL/health" || echo "⚠️ AI Service health check failed"
+        
+        echo "🎉 Deployment completed successfully!"
+    id: 'verify-deployment'
+    waitFor: ['deploy-frontend', 'deploy-ai-service', 'deploy-functions', 'deploy-firestore-rules']
 
 # Build configuration
 options:
@@ -65,6 +175,7 @@ timeout: '600s'
 substitutions:
   _REGION: 'us-central1'
   _SERVICE_NAME: 'aigm-frontend'
+  
   # Firebase configuration - Using actual aigm-theendpoint values
   _FIREBASE_API_KEY: 'AIzaSyD1UJ7ezP27TBWEiK3itjgMu1Sjb60Ln78'
   _FIREBASE_AUTH_DOMAIN: 'aigm-theendpoint.firebaseapp.com'
@@ -73,3 +184,11 @@ substitutions:
   _FIREBASE_MESSAGING_SENDER_ID: '248133304179'
   _FIREBASE_APP_ID: '1:248133304179:web:a0a062608e56ab01968f06'
   _FIREBASE_MEASUREMENT_ID: 'G-43M2G4HWEQ'
+  
+  # AI Service configuration
+  _AI_STORAGE_BUCKET: 'aigm-theendpoint.firebasestorage.app'
+  _AI_SERVICE_ACCOUNT: 'ai-service@aigm-theendpoint.iam.gserviceaccount.com'
+  _AI_SERVICE_URL: 'https://aigm-ai-service-[HASH]-uc.a.run.app'
+  
+  # Firebase deployment token (must be set in Cloud Build trigger)
+  _FIREBASE_TOKEN: ''

@@ -9,6 +9,7 @@ import ActionWindow from "./ActionWindow";
 import MobileHeader from "./MobileHeader";
 import MobileFooter from "./MobileFooter";
 import MobileServerBar from "./MobileServerBar";
+import RightSidebar from "./RightSidebar";
 import { useTheme } from "../contexts/ThemeContext";
 import CreateServerModal from "./CreateServerModal";
 import ServerSettingsModal from "./ServerSettingsModal";
@@ -23,6 +24,8 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
   const { theme, toggleTheme } = useTheme();
   const [serverBarWidth, setServerBarWidth] = useState(64); // Default 64px (w-16)
   const [infoBarWidth, setInfoBarWidth] = useState(240);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(320);
+  const [showRightSidebar, setShowRightSidebar] = useState(false);
   const [selectedServer, setSelectedServer] = useState<string | null>(null);
   const [selectedTab, setSelectedTab] = useState<"friends" | "feed" | "invites">("friends");
   const [userStatus, setUserStatus] = useState<string>("online");
@@ -44,6 +47,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
 
   const isResizingServer = useRef(false);
   const isResizingInfo = useRef(false);
+  const isResizingRightSidebar = useRef(false);
   const inactivityTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Server management states
@@ -73,6 +77,15 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
     name: string;
     participants: string[];
   } | null>(null);
+
+  // Social feed states
+  const [selectedFeed, setSelectedFeed] = useState<{ 
+    id: string; 
+    name: string; 
+    tags: string[] 
+  } | null>(null);
+  const [selectedFilterTag, setSelectedFilterTag] = useState<string | null>(null);
+  const [showPostComposer, setShowPostComposer] = useState(false);
 
   // Update user presence on activity
   const updatePresence = async () => {
@@ -423,6 +436,12 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
     e.preventDefault();
   };
 
+  // Handle resizing of RightSidebar
+  const handleRightSidebarMouseDown = (e: React.MouseEvent) => {
+    isResizingRightSidebar.current = true;
+    e.preventDefault();
+  };
+
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isResizingServer.current) {
@@ -436,12 +455,18 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
         if (newWidth >= 180 && newWidth <= 400) {
           setInfoBarWidth(newWidth);
         }
+      } else if (isResizingRightSidebar.current) {
+        const newWidth = window.innerWidth - e.clientX;
+        if (newWidth >= 280 && newWidth <= 600) {
+          setRightSidebarWidth(newWidth);
+        }
       }
     };
 
     const handleMouseUp = () => {
       isResizingServer.current = false;
       isResizingInfo.current = false;
+      isResizingRightSidebar.current = false;
     };
 
     document.addEventListener("mousemove", handleMouseMove);
@@ -451,7 +476,7 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [serverBarWidth]);
+  }, [serverBarWidth, rightSidebarWidth]);
 
   // Mobile footer handlers
   const handleMobileFooterClick = (tab: "profile" | "settings") => {
@@ -550,6 +575,11 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               onAddFriendClick={handleAddFriendClick}
               onFriendClick={handleFriendClick}
               user={user}
+              selectedFeed={selectedFeed}
+              selectedFilterTag={selectedFilterTag}
+              onCreatePost={() => setShowPostComposer(true)}
+              onFeedSelect={setSelectedFeed}
+              onTagFilter={setSelectedFilterTag}
             />
           </div>
         </div>
@@ -611,6 +641,11 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               onAddFriendClick={handleAddFriendClick}
               onFriendClick={handleFriendClick}
               user={user}
+              selectedFeed={selectedFeed}
+              selectedFilterTag={selectedFilterTag}
+              onCreatePost={() => setShowPostComposer(true)}
+              onFeedSelect={setSelectedFeed}
+              onTagFilter={setSelectedFilterTag}
             />
 
             {/* Resize Handle for InfoBar - Desktop only */}
@@ -883,11 +918,17 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
               selectedRoom={selectedRoom}
               showFriendSearch={showFriendSearch}
               selectedDM={selectedDM}
+              showRightSidebar={showRightSidebar}
+              onToggleRightSidebar={() => setShowRightSidebar(!showRightSidebar)}
               userRole={
                 selectedServer 
                   ? servers.find(s => s.id === selectedServer)?.role as "owner" | "admin" | "member" | null 
                   : null
               }
+              selectedFeed={selectedFeed}
+              selectedFilterTag={selectedFilterTag}
+              showPostComposer={showPostComposer}
+              onTogglePostComposer={() => setShowPostComposer(!showPostComposer)}
               onBackFromServerSettings={() => {
                 setShowServerSettingsView(false);
                 setSelectedServerData(null);
@@ -906,6 +947,26 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ user }) => {
             />
           )}
         </div>
+        
+        {/* Right Sidebar with Resize Handle - Desktop only */}
+        {showRightSidebar && (
+          <>
+            {/* Resize Handle */}
+            <div
+              className="hidden md:block w-1 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500 cursor-col-resize transition-colors"
+              onMouseDown={handleRightSidebarMouseDown}
+            />
+            
+            {/* Right Sidebar */}
+            <div className="hidden md:block" style={{ width: rightSidebarWidth }}>
+              <RightSidebar
+                isOpen={true}
+                onClose={() => setShowRightSidebar(false)}
+                user={user}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Modals */}

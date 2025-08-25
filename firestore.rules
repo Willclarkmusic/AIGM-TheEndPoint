@@ -16,6 +16,21 @@ service cloud.firestore {
     // USERS COLLECTION - Allow full access to own user document
     match /users/{userId} {
       allow read, write, create, update, delete: if isOwner(userId);
+      
+      // USER'S AI TEAM SUBCOLLECTION - User can manage their own AI team
+      match /ai_team/{agentId} {
+        allow read, write, create, update, delete: if isOwner(userId);
+      }
+      
+      // USER'S MEDIA BUCKET SUBCOLLECTION - User can manage their own media
+      match /media/{mediaId} {
+        allow read, write, create, update, delete: if isOwner(userId);
+      }
+      
+      // USER'S FRIENDS SUBCOLLECTION - User can manage their own friends
+      match /friends/{friendId} {
+        allow read, write, create, update, delete: if isOwner(userId);
+      }
     }
 
     // Helper function to get user's role in a server
@@ -114,10 +129,32 @@ service cloud.firestore {
 
     // AI AGENTS COLLECTION
     match /ai_agents/{agentId} {
-      allow read: if isAuthenticated();
+      // Anyone can read public agents, only creators/server members can read private agents
+      allow read: if isAuthenticated() && 
+                 (resource.data.isPublic == true || 
+                  resource.data.createdBy == request.auth.uid ||
+                  isServerMember(resource.data.serverId, request.auth.uid));
+      // Only authenticated users can create agents
       allow create: if isAuthenticated();
+      // Only creators and server owners/admins can update/delete agents
       allow update, delete: if isAuthenticated() && 
-                           resource.data.creatorId == request.auth.uid;
+                           (resource.data.createdBy == request.auth.uid ||
+                            (exists(/databases/$(database)/documents/servers/$(resource.data.serverId)) &&
+                             isServerOwnerOrAdmin(resource.data.serverId, request.auth.uid)));
+      
+      // PERSONALITY RULES SUBCOLLECTION
+      match /personality_rules/{ruleId} {
+        // Same access as parent agent
+        allow read: if isAuthenticated() && 
+                   (get(/databases/$(database)/documents/ai_agents/$(agentId)).data.isPublic == true || 
+                    get(/databases/$(database)/documents/ai_agents/$(agentId)).data.createdBy == request.auth.uid ||
+                    isServerMember(get(/databases/$(database)/documents/ai_agents/$(agentId)).data.serverId, request.auth.uid));
+        // Only creators and server owners/admins can modify personality rules
+        allow create, update, delete: if isAuthenticated() && 
+                                     (get(/databases/$(database)/documents/ai_agents/$(agentId)).data.createdBy == request.auth.uid ||
+                                      (exists(/databases/$(database)/documents/servers/$(get(/databases/$(database)/documents/ai_agents/$(agentId)).data.serverId)) &&
+                                       isServerOwnerOrAdmin(get(/databases/$(database)/documents/ai_agents/$(agentId)).data.serverId, request.auth.uid)));
+      }
     }
 
     // SOCIAL FEED COLLECTION

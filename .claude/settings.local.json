@@ -23,7 +23,8 @@
       "Bash(docker logs:*)",
       "Bash(docker stop:*)",
       "Bash(docker rm:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(python:*)"
     ],
     "deny": []
   }

@@ -41,7 +41,7 @@ interface ServerSettingsProps {
 interface Room {
   id: string;
   name: string;
-  type: "chat" | "genai" | "ai-agent";
+  type: "chat" | "genai" | "ai-agent-design";
   visible?: boolean;
 }
 
@@ -115,7 +115,7 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({
   });
   const [newRoomForm, setNewRoomForm] = useState({
     name: "",
-    type: "chat" as "chat" | "genai" | "ai-agent",
+    type: "chat" as "chat" | "genai" | "ai-agent-design",
   });
   const [renameRoomForm, setRenameRoomForm] = useState("");
   const [editMemberRole, setEditMemberRole] = useState<"admin" | "member">(
@@ -463,7 +463,7 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({
         return "#";
       case "genai":
         return "🎨";
-      case "ai-agent":
+      case "ai-agent-design":
         return "🤖";
       default:
         return "#";
@@ -956,7 +956,7 @@ const ServerSettings: React.FC<ServerSettingsProps> = ({
                 >
                   <option value="chat">Chat Room</option>
                   <option value="genai">Gen AI Room</option>
-                  <option value="ai-agent">AI Agent Room</option>
+                  <option value="ai-agent-design">AI Agent Room</option>
                 </select>
               </div>
             </div>
