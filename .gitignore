@@ -66,6 +66,12 @@ node_modules/
 .env
 .env.local
 .env.production
+.env.*
+!.env.example
+
+# Deployment scripts with secrets
+deploy-with-config.sh
+deploy-secrets.sh
 
 # dataconnect generated files
 .dataconnect

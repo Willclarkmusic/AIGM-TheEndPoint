@@ -2,7 +2,16 @@
 
 > A next-generation messaging platform that seamlessly integrates AI agents, collaborative generative AI, and real-time communication in a stunning neo-brutalism interface.
 
-![Platform Demo](https://theendpoint.xyz/)
+https://theendpoint.xyz/
+
+## 🔧 Quick Start
+
+To run this project with your own Firebase backend:
+
+1. **Set up Firebase** - See [FIREBASE_SETUP.md](./FIREBASE_SETUP.md) for detailed instructions
+2. **Configure environment** - Copy `frontend/.env.example` to `frontend/.env.local` and add your Firebase config
+3. **Install dependencies** - Run `npm install` in the frontend directory
+4. **Start development** - Run `npm run dev`
 
 ## ✨ Features
 

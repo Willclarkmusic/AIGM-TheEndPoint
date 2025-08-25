@@ -4,7 +4,7 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
 
-// Firebase configuration - Replace with your actual project values
+// Firebase configuration from environment variables
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -18,9 +18,7 @@ const firebaseConfig = {
 // Validate configuration
 const validateConfig = () => {
   const requiredFields = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'appId'];
-  const missingFields = requiredFields.filter(field => 
-    !firebaseConfig[field] || firebaseConfig[field].includes('your-')
-  );
+  const missingFields = requiredFields.filter(field => !firebaseConfig[field]);
   
   if (missingFields.length > 0) {
     console.error('Missing Firebase configuration fields:', missingFields);

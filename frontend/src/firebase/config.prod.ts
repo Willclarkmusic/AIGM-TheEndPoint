@@ -4,19 +4,36 @@ import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
 
-// Production Firebase configuration
-// Replace these values with your actual Firebase project configuration
+// Production Firebase configuration from environment variables
+// These should be injected at build time via Docker build args
 const firebaseConfig = {
-  apiKey: "AIzaSyD1UJ7ezP27TBWEiK3itjgMu1Sjb60Ln78",
-  authDomain: "aigm-theendpoint.firebaseapp.com",
-  projectId: "aigm-theendpoint",
-  storageBucket: "aigm-theendpoint.firebasestorage.app",
-  messagingSenderId: "248133304179",
-  appId: "1:248133304179:web:a0a062608e56ab01968f06",
-  measurementId: "G-43M2G4HWEQ",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || process.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || process.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || process.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase
+// Validate configuration
+const validateConfig = () => {
+  const requiredFields = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'appId'];
+  const missingFields = requiredFields.filter(field => !firebaseConfig[field]);
+  
+  if (missingFields.length > 0) {
+    console.error('Missing Firebase configuration fields:', missingFields);
+    console.error('Please ensure environment variables are properly set');
+    throw new Error('Firebase configuration is incomplete');
+  }
+  return true;
+};
+
+// Initialize Firebase only if config is valid
+if (!validateConfig()) {
+  throw new Error('Firebase configuration validation failed');
+}
+
 const app = initializeApp(firebaseConfig);
 
 // Export Firebase services
