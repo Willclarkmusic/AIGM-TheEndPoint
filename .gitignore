@@ -69,9 +69,16 @@ node_modules/
 .env.*
 !.env.example
 
+
 # Deployment scripts with secrets
+/SECRETS
 deploy-with-config.sh
 deploy-secrets.sh
+setup-secrets.sh
+setup-secrets.ps1
+create-secrets*.ps1
+create-secrets-template.ps1
+*.sh
 
 # dataconnect generated files
 .dataconnect
