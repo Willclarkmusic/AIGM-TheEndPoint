@@ -11,6 +11,9 @@ COPY package*.json ./
 # Install all dependencies (including dev dependencies for build)
 RUN npm ci --silent
 
+# Copy source code BEFORE setting build args
+COPY . .
+
 # Accept build arguments for Firebase configuration
 ARG VITE_FIREBASE_API_KEY
 ARG VITE_FIREBASE_AUTH_DOMAIN
@@ -19,18 +22,6 @@ ARG VITE_FIREBASE_STORAGE_BUCKET
 ARG VITE_FIREBASE_MESSAGING_SENDER_ID
 ARG VITE_FIREBASE_APP_ID
 ARG VITE_FIREBASE_MEASUREMENT_ID
-
-# Set environment variables for the build
-ENV VITE_FIREBASE_API_KEY=$VITE_FIREBASE_API_KEY
-ENV VITE_FIREBASE_AUTH_DOMAIN=$VITE_FIREBASE_AUTH_DOMAIN
-ENV VITE_FIREBASE_PROJECT_ID=$VITE_FIREBASE_PROJECT_ID
-ENV VITE_FIREBASE_STORAGE_BUCKET=$VITE_FIREBASE_STORAGE_BUCKET
-ENV VITE_FIREBASE_MESSAGING_SENDER_ID=$VITE_FIREBASE_MESSAGING_SENDER_ID
-ENV VITE_FIREBASE_APP_ID=$VITE_FIREBASE_APP_ID
-ENV VITE_FIREBASE_MEASUREMENT_ID=$VITE_FIREBASE_MEASUREMENT_ID
-
-# Copy source code
-COPY . .
 
 # Create .env.production file with build-time values
 RUN echo "VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY}" > .env.production && \
@@ -41,8 +32,12 @@ RUN echo "VITE_FIREBASE_API_KEY=${VITE_FIREBASE_API_KEY}" > .env.production && \
     echo "VITE_FIREBASE_APP_ID=${VITE_FIREBASE_APP_ID}" >> .env.production && \
     echo "VITE_FIREBASE_MEASUREMENT_ID=${VITE_FIREBASE_MEASUREMENT_ID}" >> .env.production
 
-# Debug: Show the created .env.production file
-RUN echo "=== Debug: Created .env.production file ===" && \
+# Debug: Show build args and .env.production file
+RUN echo "=== Debug: Build Args ===" && \
+    echo "API_KEY=${VITE_FIREBASE_API_KEY}" && \
+    echo "AUTH_DOMAIN=${VITE_FIREBASE_AUTH_DOMAIN}" && \
+    echo "PROJECT_ID=${VITE_FIREBASE_PROJECT_ID}" && \
+    echo "=== Debug: Created .env.production file ===" && \
     cat .env.production && \
     echo "============================================"
 
