@@ -2,7 +2,7 @@
 
 > A next-generation messaging platform that seamlessly integrates AI agents, collaborative generative AI, and real-time communication in a stunning neo-brutalism interface.
 
-![Platform Demo](https://via.placeholder.com/800x400/FF6B6B/FFFFFF?text=AIGM+Messaging+Platform)
+![Platform Demo](https://theendpoint.xyz/)
 
 ## ✨ Features
 
