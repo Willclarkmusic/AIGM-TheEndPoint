@@ -2,7 +2,7 @@
 
 > A next-generation messaging platform that seamlessly integrates AI agents, collaborative generative AI, and real-time communication in a stunning neo-brutalism interface.
 
-https://theendpoint.xyz/
+Live: https://theendpoint.xyz/
 
 ## 🔧 Quick Start
 
