@@ -24,7 +24,7 @@ These documents contain all the critical information and should be referenced be
 
 * **Backend:** Firebase (Authentication, Firestore, Cloud Functions, Cloud Storage), Google Cloud Run (for custom Python services).
 
-* **AI/GenAI:** LangGraph (for agent orchestration), Google Gemini API, Stability AI APIs.
+* **AI/GenAI:** LangGraph (for agent orchestration), Google Gemini API, Stability AI APIs, FastAPI.
 
 * **Queuing:** Google Cloud Pub/Sub.
 
